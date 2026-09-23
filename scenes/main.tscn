@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/levels/combat_lab.tscn" id="2_lab"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="3_player"]
+
+[node name="Main" type="Node3D"]
+process_mode = 3
+script = ExtResource("1_main")
+
+[node name="CombatLab" parent="." instance=ExtResource("2_lab")]
+process_mode = 1
+
+[node name="SlimePlayer" parent="." instance=ExtResource("3_player")]
+process_mode = 1
+position = Vector3(0, 0.05, 6)

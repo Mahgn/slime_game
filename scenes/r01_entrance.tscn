@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/r01_entrance.gd" id="1_entrance"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="2_player"]
+
+[node name="R01Entrance" type="Node3D"]
+process_mode = 3
+script = ExtResource("1_entrance")
+
+[node name="SlimePlayer" parent="." instance=ExtResource("2_player")]
+process_mode = 1
+position = Vector3(0, 0.05, 3.6)

@@ -1,0 +1,13 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/s4_stress.gd" id="1_stress"]
+[ext_resource type="PackedScene" path="res://scenes/levels/combat_lab.tscn" id="2_lab"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="3_player"]
+
+[node name="S4Stress" type="Node3D"]
+script = ExtResource("1_stress")
+
+[node name="CombatLab" parent="." instance=ExtResource("2_lab")]
+
+[node name="SlimePlayer" parent="." instance=ExtResource("3_player")]
+position = Vector3(0, 0.05, 0)
