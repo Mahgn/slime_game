@@ -3,7 +3,7 @@ config_version=5
 [application]
 
 config/name="Слайм: путь наверх"
-run/main_scene="res://scenes/r01_entrance.tscn"
+run/main_scene="res://scenes/launch.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]

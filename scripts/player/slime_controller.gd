@@ -289,7 +289,7 @@ func _advance_action(delta: float) -> void:
 
 func _do_whip_hit() -> void:
 	var origin := global_position + Vector3(0.0, 0.65, 0.0)
-	for enemy: Node in get_tree().get_nodes_in_group(&"enemies"):
+	for enemy: Node in get_tree().get_nodes_in_group(&"enemies") + get_tree().get_nodes_in_group(&"training_targets"):
 		if not is_instance_valid(enemy) or not enemy is Node3D or not enemy.has_method("receive_hit"):
 			continue
 		var target := enemy as Node3D
@@ -360,6 +360,25 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool
 		visual_root.rotation.z = 0.35
 		died.emit()
 	return true
+
+
+func apply_environment_damage(amount: int) -> void:
+	if health <= 0 or amount <= 0:
+		return
+	health = maxi(0, health - amount)
+	_hit_pulse = 0.15
+	cancel_absorb()
+	damaged.emit()
+	health_changed.emit(health, MAX_HEALTH)
+	if health == 0:
+		_action = &""
+		_phase = &""
+		_buffered_action = &""
+		_whip_visual.visible = false
+		_shell_visual.visible = false
+		visual_root.scale = Vector3(1.24, 0.56, 1.24)
+		visual_root.rotation.z = 0.35
+		died.emit()
 
 
 func grant_ability(ability_id: StringName) -> bool:

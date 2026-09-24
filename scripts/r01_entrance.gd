@@ -2,11 +2,14 @@ extends Node3D
 
 const INPUT_SETUP = preload("res://scripts/input_setup.gd")
 const R02_SCENE := "res://scenes/main.tscn"
+const STORE_SCRIPT = preload("res://scripts/progression/checkpoint_store.gd")
 
 @onready var player: SlimeController = $SlimePlayer
 
 var _transitioning := false
+var _save_retry_left := 0.0
 var _pause_panel: ColorRect
+var _hint: Label
 
 
 func _enter_tree() -> void:
@@ -36,18 +39,27 @@ func _notification(what: int) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	_save_retry_left = maxf(0.0, _save_retry_left - delta)
 	if _transitioning or get_tree().paused:
 		return
 	if player.global_position.y < -3.0:
 		player.global_position = Vector3(0.0, 0.05, 3.6)
 		player.velocity = Vector3.ZERO
-	if player.global_position.z < -4.7 and player.global_position.y > 1.0:
+	if _save_retry_left <= 0.0 and player.global_position.z < -4.7 and player.global_position.y > 1.0:
 		_transitioning = true
 		call_deferred("_enter_r02")
 
 
 func _enter_r02() -> void:
+	if get_tree().get_meta(&"checkpoint_active", false):
+		var store: CheckpointStore = STORE_SCRIPT.new()
+		var written := store.write_checkpoint(store.snapshot_for_room("R02", player))
+		if not written["ok"]:
+			_transitioning = false
+			_save_retry_left = 3.0
+			_hint.text = "Не удалось сохранить вход в R02: %s" % written["error"]
+			return
 	get_tree().paused = false
 	var result := get_tree().change_scene_to_file(R02_SCENE)
 	if result != OK:
@@ -140,13 +152,13 @@ func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(layer)
-	var hint := Label.new()
-	hint.text = "ВХОД · R01\nПоднимись к свету. WASD — идти, Пробел — прыгать"
-	hint.position = Vector2(24, 20)
-	hint.add_theme_font_size_override("font_size", 25)
-	hint.add_theme_color_override("font_color", Color(0.97, 0.96, 0.88))
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(hint)
+	_hint = Label.new()
+	_hint.text = "ВХОД · R01\nПоднимись к свету. WASD — идти, Пробел — прыгать"
+	_hint.position = Vector2(24, 20)
+	_hint.add_theme_font_size_override("font_size", 25)
+	_hint.add_theme_color_override("font_color", Color(0.97, 0.96, 0.88))
+	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_hint)
 	var marker := Label.new()
 	marker.text = "+"
 	marker.anchor_left = 0.5

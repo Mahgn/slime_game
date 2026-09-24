@@ -1,6 +1,7 @@
 extends Node3D
 
 const INPUT_SETUP = preload("res://scripts/input_setup.gd")
+const STORE_SCRIPT = preload("res://scripts/progression/checkpoint_store.gd")
 const SPITTER_SCENE = preload("res://scenes/enemies/spitter.tscn")
 const SOURCE_SCENE = preload("res://scenes/interactables/absorb_source.tscn")
 const PROJECTILE_SCENE = preload("res://scenes/abilities/spit_projectile.tscn")
@@ -128,6 +129,8 @@ func _physics_process(_delta: float) -> void:
 	if is_instance_valid(first_source):
 		first_source.set_focused(player.get_nearest_absorb_source() == first_source)
 	_spawn_second_if_ready()
+	if stage == &"clear_pending" and get_tree().get_nodes_in_group(&"enemy_projectiles").is_empty() and get_tree().get_nodes_in_group(&"enemy_attacks").is_empty():
+		_complete_run()
 
 
 func _process(delta: float) -> void:
@@ -150,6 +153,8 @@ func _process(delta: float) -> void:
 		_hint_label.text = "Подойди к сияющему остатку и удерживай E"
 	elif stage == &"approach":
 		_hint_label.text = "Иди к золотой отметке впереди"
+	elif stage == &"clear_pending":
+		_hint_label.text = "Уклоняйся от оставшихся атак"
 	else:
 		_hint_label.text = "ПКМ — липкий плевок · ЛКМ — хлыст"
 
@@ -179,7 +184,8 @@ func _on_enemy_died(enemy: Spitter, ability_id: StringName, at: Vector3) -> void
 		first_source.position = at
 		add_child(first_source)
 	elif enemy == second_enemy:
-		_complete_run()
+		stage = &"clear_pending"
+		_show_info("Враг побежден. Осторожно: оставшиеся атаки еще летят")
 
 
 func _on_enemy_projectile(enemy: Spitter, origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String) -> void:
@@ -285,6 +291,20 @@ func _show_end(title: String) -> void:
 func _restart() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+func _enter_r03() -> void:
+	if get_tree().get_meta(&"checkpoint_active", false):
+		var store: CheckpointStore = STORE_SCRIPT.new()
+		var written := store.write_checkpoint(store.snapshot_for_room("R03", player))
+		if not written["ok"]:
+			_end_title.text = "Не удалось сохранить вход в R03"
+			return
+	get_tree().paused = false
+	var result := get_tree().change_scene_to_file("res://scenes/r03_armorer.tscn")
+	if result != OK:
+		get_tree().paused = true
+		_end_title.text = "Не удалось открыть R03"
 
 
 func _show_info(message: String) -> void:
@@ -436,14 +456,11 @@ func _create_hud() -> void:
 	repeat_button.pressed.connect(_restart)
 	end_box.add_child(repeat_button)
 	_next_button = Button.new()
-	_next_button.text = "Продолжить: испытание навыков"
+	_next_button.text = "Продолжить: Панцирный проход"
 	_next_button.custom_minimum_size.y = 46.0
 	_next_button.visible = false
 	_style_button(_next_button)
-	_next_button.pressed.connect(func() -> void:
-		get_tree().paused = false
-		get_tree().change_scene_to_file("res://scenes/s4_trial.tscn")
-	)
+	_next_button.pressed.connect(_enter_r03)
 	end_box.add_child(_next_button)
 	var exit_button := Button.new()
 	exit_button.text = "Выйти"

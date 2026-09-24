@@ -1,12 +1,16 @@
 extends Node3D
 
+@export_enum("trial", "r03", "r04", "r05", "r06", "r07") var room_mode := "trial"
+
 const INPUT_SETUP = preload("res://scripts/input_setup.gd")
+const STORE_SCRIPT = preload("res://scripts/progression/checkpoint_store.gd")
 const SPITTER_SCENE = preload("res://scenes/enemies/spitter.tscn")
 const ARMORER_SCENE = preload("res://scenes/enemies/armorer.tscn")
 const SPROUT_SCENE = preload("res://scenes/enemies/stone_sprout.tscn")
 const SOURCE_SCENE = preload("res://scenes/interactables/absorb_source.tscn")
 const PROJECTILE_SCENE = preload("res://scenes/abilities/spit_projectile.tscn")
 const SPIKE_SCRIPT = preload("res://scripts/combat/spike_line.gd")
+const TRAINING_TARGET_SCRIPT = preload("res://scripts/interactables/training_target.gd")
 const HIT_SOUND = preload("res://assets/audio/hit.wav")
 const ABSORB_SOUND = preload("res://assets/audio/absorb.wav")
 const CAST_SOUND = preload("res://assets/audio/cast.wav")
@@ -30,6 +34,7 @@ var _core: Node3D
 var _core_hold := 0.0
 var _core_requires_release := true
 var _stage_delay := 0.0
+var _save_retry_left := 0.0
 var _safe_left := 0.5
 var _card_left := 0.0
 var _info_left := 0.0
@@ -50,6 +55,11 @@ var _collection_slots: Array[Button] = []
 var _pause_panel: ColorRect
 var _end_panel: ColorRect
 var _end_title: Label
+var _continue_button: Button
+var _route_label: Label
+var _entry_slot_one: StringName = &"sticky_spit"
+var _entry_slot_two: StringName = &""
+var _exit_marker: Node3D
 
 
 func _enter_tree() -> void:
@@ -60,6 +70,13 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().paused = false
 	_create_hud()
+	var saved_entry := _saved_entry()
+	if get_tree().get_meta(&"checkpoint_active", false) and saved_entry.is_empty():
+		_show_end("Не удалось восстановить входной снимок")
+		return
+	if room_mode == "r04":
+		_add_upper_light()
+		_spawn_exit_marker()
 	player.health_changed.connect(_on_health_changed)
 	player.damaged.connect(_on_player_damaged)
 	player.shell_blocked.connect(func() -> void: _play_audio(HIT_SOUND, player.global_position))
@@ -73,9 +90,41 @@ func _ready() -> void:
 	player.action_started.connect(_on_action_started)
 	player.loadout_changed.connect(_refresh_collection)
 	player.grant_ability(&"sticky_spit")
-	_spawn_enemy(ARMORER_SCENE, Vector3(0.0, 0.05, 0.0))
+	if room_mode == "r04":
+		stage = &"core"
+		player.grant_ability(&"elastic_shell")
+		var slot_one := StringName(saved_entry["loadout"][0]) if not saved_entry.is_empty() else StringName(get_tree().get_meta(&"r03_slot_one", &"sticky_spit"))
+		get_tree().remove_meta(&"r03_slot_one")
+		if slot_one != &"sticky_spit" and slot_one != &"elastic_shell" and slot_one != &"":
+			slot_one = &"sticky_spit"
+		_entry_slot_one = slot_one
+		if slot_one != &"sticky_spit":
+			player.equip_ability(1, slot_one)
+		_card_left = 0.0
+		_spawn_core()
+	elif room_mode == "r05":
+		stage = &"mixed"
+		player.grant_ability(&"elastic_shell")
+		player.grant_ability(&"slime_spikes")
+		player.unlock_second_slot()
+		_restore_r05_entry(saved_entry)
+		_card_left = 0.0
+		_spawn_mixed_fight()
+	elif room_mode == "r03":
+		if not saved_entry.is_empty():
+			player.equip_ability(1, StringName(saved_entry["loadout"][0]))
+		_spawn_enemy(ARMORER_SCENE, Vector3(0.0, 0.05, 0.0))
+	else:
+		_spawn_enemy(ARMORER_SCENE, Vector3(0.0, 0.05, 0.0))
 	_on_health_changed(player.health, player.MAX_HEALTH)
-	_show_info("Испытание навыков: победи Панцирника")
+	if room_mode == "r03":
+		_show_info("R03 · Панцирный проход: победи Панцирника")
+	elif room_mode == "r04":
+		_show_info("R04 · Зал ядра: открой вторую ячейку")
+	elif room_mode == "r05":
+		_show_info("R05 · Смешанный зал: выбери цель и обходи опоры")
+	else:
+		_show_info("Испытание навыков: победи Панцирника")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -114,7 +163,8 @@ func _notification(what: int) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if get_tree().paused or stage == &"dead" or stage == &"complete":
+	_save_retry_left = maxf(0.0, _save_retry_left - delta)
+	if get_tree().paused or stage == &"dead" or stage == &"complete" or stage == &"transition":
 		return
 	for source in _sources:
 		if is_instance_valid(source):
@@ -126,7 +176,15 @@ func _physics_process(delta: float) -> void:
 			break
 	threat = threat or not get_tree().get_nodes_in_group(&"enemy_projectiles").is_empty() or not get_tree().get_nodes_in_group(&"enemy_attacks").is_empty()
 	_safe_left = 0.5 if threat else maxf(0.0, _safe_left - delta)
-	if stage == &"core":
+	if stage == &"r03_exit" and _save_retry_left <= 0.0 and _safe_left <= 0.0 and _card_left <= 0.0 and player.global_position.z <= -3.2:
+		stage = &"transition"
+		get_tree().set_meta(&"r03_slot_one", player.get_slot_ability(1))
+		call_deferred("_enter_r04")
+	elif stage == &"r04_exit" and _safe_left <= 0.0 and _card_left <= 0.0 and player.global_position.distance_to(Vector3(0.0, 0.05, -8.2)) <= 1.6 and Input.is_action_just_pressed(&"interact"):
+		stage = &"transition"
+		get_tree().set_meta(&"r05_entry", {"slot_one": player.get_slot_ability(1), "slot_two": player.get_slot_ability(2)})
+		call_deferred("_enter_r05")
+	elif stage == &"core":
 		_update_core_interaction(delta)
 	elif stage == &"sprout_wait" or stage == &"mixed_wait":
 		_stage_delay = maxf(0.0, _stage_delay - delta)
@@ -137,13 +195,10 @@ func _physics_process(delta: float) -> void:
 				_show_info("Каменный росток: прыгай над низкими шипами")
 			else:
 				stage = &"mixed"
-				_spawn_enemy(SPITTER_SCENE, Vector3(-4.8, 0.05, -6.5))
-				_spawn_enemy(ARMORER_SCENE, Vector3(3.7, 0.05, -4.5))
-				_spawn_enemy(SPROUT_SCENE, Vector3(0.0, 0.05, 0.3))
-				_show_info("Смешанный бой: три врага, выбирай два навыка")
+				_spawn_mixed_fight()
 	elif stage == &"mixed" and not threat and _safe_left <= 0.0:
 		stage = &"complete"
-		_show_end("Испытание S4 пройдено")
+		_show_end("R05 пройден" if room_mode == "r05" else "Испытание S4 пройдено")
 
 
 func _process(delta: float) -> void:
@@ -170,6 +225,10 @@ func _process(delta: float) -> void:
 		_hint_label.text = "Подойди к остатку и удерживай E"
 	elif stage == &"core":
 		_hint_label.text = "Ядро: подойди и удерживай E"
+	elif stage == &"r03_exit":
+		_hint_label.text = "Панцирь изучен. Tab — выбор навыка; иди к золотой линии"
+	elif stage == &"r04_exit":
+		_hint_label.text = "Выбери два навыка (Tab), затем у светлой отметки нажми E"
 	elif stage == &"mixed_wait":
 		_hint_label.text = "Tab — коллекция. Выбери два навыка перед боем"
 	else:
@@ -234,13 +293,32 @@ func _on_ability_unlocked(ability_id: StringName) -> void:
 	_card_left = 1.8
 	_card_label.text = "%s изучен\n%s" % [NAMES[ability_id], "Выбери вне боя (Tab)" if ability_id == &"slime_spikes" else "Навык в коллекции"]
 	if ability_id == &"elastic_shell" and stage == &"absorb_shell":
-		stage = &"core"
-		_spawn_core()
-		_show_info("Найди золотое ядро впереди")
+		if room_mode == "r03":
+			stage = &"r03_exit"
+			_show_info("Панцирь изучен. Прогресс сохранится в следующем зале")
+		else:
+			stage = &"core"
+			_spawn_core()
+			_show_info("Найди золотое ядро впереди")
 	elif ability_id == &"slime_spikes" and stage == &"absorb_spikes":
-		stage = &"mixed_wait"
-		_stage_delay = 7.0
-		_show_info("Навык изучен. Tab — выбери два для смешанного боя")
+		if room_mode == "r04":
+			stage = &"r04_exit"
+			_exit_marker.visible = true
+			_spawn_training_target()
+			_show_info("Липкие цели получают больше урона от шипов")
+		else:
+			stage = &"mixed_wait"
+			_stage_delay = 7.0
+			_show_info("Навык изучен. Tab — выбери два для смешанного боя")
+
+
+func _spawn_training_target() -> void:
+	var target := StaticBody3D.new()
+	target.set_script(TRAINING_TARGET_SCRIPT)
+	target.name = "TrainingTarget"
+	target.position = Vector3(-3.0, 0.0, -7.0)
+	target.process_mode = Node.PROCESS_MODE_PAUSABLE
+	add_child(target)
 
 
 func _spawn_core() -> void:
@@ -414,6 +492,7 @@ func _select_slot(slot: int) -> void:
 func _equip_card(ability_id: StringName) -> void:
 	if player.equip_ability(_chosen_slot, ability_id):
 		_refresh_collection()
+		_update_saved_loadout_if_eligible()
 	else:
 		_show_info("Навык уже стоит в другом слоте")
 
@@ -436,14 +515,189 @@ func _on_player_damaged() -> void:
 func _show_end(title: String) -> void:
 	_end_title.text = title
 	_end_panel.visible = true
+	if is_instance_valid(_continue_button):
+		_continue_button.visible = (room_mode == "r05" or room_mode == "r06") and stage == &"complete"
 	_collection_open = false
 	_underlying_pause = true
 	_update_pause_state()
 
 
 func _restart() -> void:
+	if not get_tree().get_meta(&"checkpoint_active", false) and room_mode == "r04":
+		get_tree().set_meta(&"r03_slot_one", _entry_slot_one)
+	elif not get_tree().get_meta(&"checkpoint_active", false) and room_mode == "r05":
+		get_tree().set_meta(&"r05_entry", {"slot_one": _entry_slot_one, "slot_two": _entry_slot_two})
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+func _enter_r07() -> void:
+	if room_mode != "r06" or stage != &"complete":
+		return
+	if not _write_next_entry("R07"):
+		_end_title.text = "Не удалось сохранить вход в R07"
+		return
+	get_tree().paused = false
+	var result := get_tree().change_scene_to_file("res://scenes/r07_guardian.tscn")
+	if result != OK:
+		_show_end("Не удалось открыть R07")
+		push_error("R06: переход в R07 не удался: %d" % result)
+
+
+func _enter_r06() -> void:
+	if room_mode != "r05" or stage != &"complete":
+		return
+	if not _write_next_entry("R06"):
+		_end_title.text = "Не удалось сохранить вход в R06"
+		return
+	get_tree().paused = false
+	var result := get_tree().change_scene_to_file("res://scenes/r06_press.tscn")
+	if result != OK:
+		_show_end("Не удалось открыть R06")
+		push_error("R05: переход в R06 не удался: %d" % result)
+
+
+func _enter_r04() -> void:
+	if not _write_next_entry("R04"):
+		get_tree().remove_meta(&"r03_slot_one")
+		stage = &"r03_exit"
+		_save_retry_left = 3.0
+		return
+	var result := get_tree().change_scene_to_file("res://scenes/r04_core_trial.tscn")
+	if result != OK:
+		get_tree().remove_meta(&"r03_slot_one")
+		stage = &"r03_exit"
+		push_error("R03: переход в R04 не удался: %d" % result)
+
+
+func _enter_r05() -> void:
+	if not _write_next_entry("R05"):
+		get_tree().remove_meta(&"r05_entry")
+		stage = &"r04_exit"
+		return
+	var result := get_tree().change_scene_to_file("res://scenes/r05_mixed.tscn")
+	if result != OK:
+		get_tree().remove_meta(&"r05_entry")
+		stage = &"r04_exit"
+		push_error("R04: переход в R05 не удался: %d" % result)
+
+
+func _restore_r05_entry(saved_entry: Dictionary = {}) -> void:
+	var raw_entry: Variant = get_tree().get_meta(&"r05_entry", {})
+	get_tree().remove_meta(&"r05_entry")
+	var entry: Dictionary = raw_entry if raw_entry is Dictionary else {}
+	if not saved_entry.is_empty():
+		entry = {"slot_one": saved_entry["loadout"][0], "slot_two": saved_entry["loadout"][1]}
+	var slot_one := StringName(entry.get("slot_one", &"sticky_spit"))
+	var slot_two := StringName(entry.get("slot_two", &"elastic_shell"))
+	if slot_one != &"" and not ABILITIES.has(slot_one):
+		slot_one = &"sticky_spit"
+	if slot_two != &"" and not ABILITIES.has(slot_two):
+		slot_two = &"elastic_shell"
+	if slot_one != &"" and slot_one == slot_two:
+		slot_two = &""
+	_entry_slot_one = slot_one
+	_entry_slot_two = slot_two
+	player.equip_ability(1, &"")
+	player.equip_ability(2, &"")
+	player.equip_ability(1, slot_one)
+	player.equip_ability(2, slot_two)
+
+
+func _saved_entry() -> Dictionary:
+	if room_mode == "trial" or not get_tree().get_meta(&"checkpoint_active", false):
+		return {}
+	var store: CheckpointStore = STORE_SCRIPT.new()
+	var result := store.read_checkpoint()
+	if result["status"] != "ok":
+		return {}
+	var entry: Dictionary = result["snapshot"]
+	return entry if entry["checkpoint_room_id"] == room_mode.to_upper() else {}
+
+
+func _write_next_entry(room_id: String) -> bool:
+	if not get_tree().get_meta(&"checkpoint_active", false):
+		return true
+	var store: CheckpointStore = STORE_SCRIPT.new()
+	var written := store.write_checkpoint(store.snapshot_for_room(room_id, player))
+	if not written["ok"]:
+		_show_info("Не удалось сохранить вход: %s" % written["error"])
+		return false
+	return true
+
+
+func _update_saved_loadout_if_eligible() -> void:
+	if room_mode == "trial" or not get_tree().get_meta(&"checkpoint_active", false):
+		return
+	var store: CheckpointStore = STORE_SCRIPT.new()
+	var result := store.read_checkpoint()
+	if result["status"] != "ok" or result["snapshot"]["checkpoint_room_id"] != room_mode.to_upper():
+		return
+	var learned: Array = result["snapshot"]["learned_abilities"]
+	if player.unlocked_slots != result["snapshot"]["unlocked_slots"]:
+		return
+	for ability: Variant in player.learned_abilities.keys():
+		if not learned.has(String(ability)):
+			return
+	var first := String(player.get_slot_ability(1))
+	var second := String(player.get_slot_ability(2))
+	if (first != "" and not learned.has(first)) or (second != "" and not learned.has(second)):
+		return
+	if not store.update_saved_loadout(room_mode.to_upper(), player):
+		_show_info("Не удалось сохранить сборку")
+
+
+func _spawn_mixed_fight() -> void:
+	if room_mode == "r05":
+		_spawn_enemy(SPITTER_SCENE, Vector3(-5.7, 0.05, -2.0))
+		_spawn_enemy(ARMORER_SCENE, Vector3(5.7, 0.05, -2.0))
+		_spawn_enemy(SPROUT_SCENE, Vector3(0.0, 0.05, -2.7))
+	else:
+		_spawn_enemy(SPITTER_SCENE, Vector3(-4.8, 0.05, -6.5))
+		_spawn_enemy(ARMORER_SCENE, Vector3(3.7, 0.05, -4.5))
+		_spawn_enemy(SPROUT_SCENE, Vector3(0.0, 0.05, 0.3))
+	_show_info("Смешанный бой: три врага, выбирай два навыка")
+
+
+func _spawn_exit_marker() -> void:
+	_exit_marker = Node3D.new()
+	_exit_marker.name = "R05Exit"
+	_exit_marker.position = Vector3(0.0, 0.0, -8.2)
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(2.4, 0.05, 0.3)
+	mesh.mesh = box
+	mesh.position.y = 0.045
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.93, 0.86, 0.57)
+	material.emission_enabled = true
+	material.emission = Color(0.96, 0.65, 0.23)
+	mesh.material_override = material
+	_exit_marker.add_child(mesh)
+	add_child(_exit_marker)
+	_exit_marker.visible = false
+
+
+func _add_upper_light() -> void:
+	var glow := MeshInstance3D.new()
+	glow.name = "UpperLight"
+	glow.position = Vector3(0.0, 2.62, -9.78)
+	var box := BoxMesh.new()
+	box.size = Vector3(2.6, 0.48, 0.08)
+	glow.mesh = box
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.85, 0.53)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.72, 0.36)
+	material.emission_energy_multiplier = 1.1
+	glow.material_override = material
+	add_child(glow)
+	var light := OmniLight3D.new()
+	light.position = Vector3(0.0, 2.6, -8.7)
+	light.light_color = Color(1.0, 0.78, 0.48)
+	light.light_energy = 1.0
+	light.omni_range = 6.5
+	add_child(light)
 
 
 func _show_info(message: String) -> void:
@@ -470,6 +724,14 @@ func _create_hud() -> void:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(root)
+	if room_mode != "trial":
+		var room_title := "R03 · ПАНЦИРНЫЙ ПРОХОД" if room_mode == "r03" else ("R04 · ЗАЛ ЯДРА" if room_mode == "r04" else ("R06 · КАМЕННЫЙ ПРЕСС" if room_mode == "r06" else ("R07 · СТРАЖ ВЫХОДА" if room_mode == "r07" else "R05 · СМЕШАННЫЙ ЗАЛ")))
+		_route_label = _make_label(root, room_title, 23)
+		_route_label.anchor_left = 1.0
+		_route_label.anchor_right = 1.0
+		_route_label.offset_left = -340
+		_route_label.offset_right = -18
+		_route_label.offset_top = 24
 	var status := ColorRect.new()
 	status.color = Color(0.025, 0.08, 0.10, 0.82)
 	status.position = Vector2(18, 16)
@@ -489,6 +751,16 @@ func _create_hud() -> void:
 	crosshair.anchor_bottom = 0.5
 	crosshair.offset_left = -8
 	crosshair.offset_top = -16
+	var hint_back := ColorRect.new()
+	hint_back.color = Color(0.025, 0.08, 0.10, 0.78)
+	hint_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint_back.anchor_left = 0.11
+	hint_back.anchor_right = 0.89
+	hint_back.anchor_top = 1.0
+	hint_back.anchor_bottom = 1.0
+	hint_back.offset_top = -77
+	hint_back.offset_bottom = -15
+	root.add_child(hint_back)
 	_hint_label = _make_label(root, "", 20)
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint_label.anchor_left = 0.12
@@ -574,10 +846,16 @@ func _create_hud() -> void:
 	_end_title = _make_label(end_box, "", 28)
 	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var restart_button := Button.new()
-	restart_button.text = "Повторить испытание (R)"
+	restart_button.text = "Повторить испытание (R)" if room_mode == "trial" else "Повторить зал (R)"
 	restart_button.custom_minimum_size.y = 48
 	restart_button.pressed.connect(_restart)
 	end_box.add_child(restart_button)
+	if room_mode == "r05" or room_mode == "r06":
+		_continue_button = Button.new()
+		_continue_button.text = "Дальше: Каменный пресс" if room_mode == "r05" else "Дальше: Страж выхода"
+		_continue_button.custom_minimum_size.y = 48
+		_continue_button.pressed.connect(_enter_r06 if room_mode == "r05" else _enter_r07)
+		end_box.add_child(_continue_button)
 
 
 func _overlay(root: Control, heading: String) -> ColorRect:

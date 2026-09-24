@@ -1,0 +1,17 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/s4_trial.gd" id="1_room"]
+[ext_resource type="PackedScene" path="res://scenes/levels/mixed_hall.tscn" id="2_hall"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="3_player"]
+
+[node name="R05Mixed" type="Node3D"]
+process_mode = 3
+script = ExtResource("1_room")
+room_mode = "r05"
+
+[node name="MixedHall" parent="." instance=ExtResource("2_hall")]
+process_mode = 1
+
+[node name="SlimePlayer" parent="." instance=ExtResource("3_player")]
+process_mode = 1
+position = Vector3(0, 0.05, 6.2)

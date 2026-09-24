@@ -23,7 +23,7 @@ func _run() -> void:
 	_report("S4_FLOW", await _test_s4_flow())
 	_report("S4_NAV", await _test_navigation())
 	_report("S4_RESTART", await _test_restarts())
-	_report("S4_TRANSITION", await _test_transition())
+	_report("R02_R03_TRANSITION", await _test_transition())
 	print("S4_RESULT failures=%d" % _failures)
 	quit(0 if _failures == 0 else 1)
 
@@ -407,8 +407,11 @@ func _test_transition() -> String:
 	var offered := is_instance_valid(button) and button.visible and paused
 	if offered:
 		button.pressed.emit()
-	await _steps(4)
-	var arrived := is_instance_valid(current_scene) and current_scene.scene_file_path == "res://scenes/s4_trial.tscn" and not paused
+	for tick in 30:
+		await physics_frame
+		if is_instance_valid(current_scene) and current_scene.scene_file_path == "res://scenes/r03_armorer.tscn":
+			break
+	var arrived := is_instance_valid(current_scene) and current_scene.scene_file_path == "res://scenes/r03_armorer.tscn" and not paused
 	var fresh := false
 	if arrived:
 		var player := current_scene.get_node("SlimePlayer") as SlimeController
@@ -417,5 +420,5 @@ func _test_transition() -> String:
 	paused = false
 	await _steps(3)
 	if not offered or not arrived or not fresh:
-		return "S2 completion button did not open a fresh S4 trial"
+		return "R02 completion button did not open a fresh R03"
 	return ""

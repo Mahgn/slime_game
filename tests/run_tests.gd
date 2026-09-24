@@ -717,11 +717,11 @@ func _send_restart_key() -> void:
 	var event := InputEventKey.new()
 	event.physical_keycode = KEY_R
 	event.pressed = true
-	Input.parse_input_event(event)
+	root.push_input(event, true)
 	event = InputEventKey.new()
 	event.physical_keycode = KEY_R
 	event.pressed = false
-	Input.parse_input_event(event)
+	root.push_input(event, true)
 
 
 func _send_pause_action() -> void:

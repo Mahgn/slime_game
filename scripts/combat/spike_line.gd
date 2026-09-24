@@ -64,7 +64,7 @@ func build_line() -> int:
 
 func _hit_targets(center: Vector3) -> void:
 	var group: StringName = &"enemies" if team == &"player" else &"player"
-	for target_node: Node in get_tree().get_nodes_in_group(group):
+	for target_node: Node in get_tree().get_nodes_in_group(group) + (get_tree().get_nodes_in_group(&"training_targets") if team == &"player" else []):
 		if not is_instance_valid(target_node) or not target_node is Node3D or not target_node.has_method("receive_hit"):
 			continue
 		var target := target_node as Node3D
