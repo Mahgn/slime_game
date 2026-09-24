@@ -93,7 +93,7 @@ func _physics_process(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_hit_flash_left = maxf(0.0, _hit_flash_left - delta)
-	_body_material.albedo_color = Color(0.97, 0.91, 0.67) if _hit_flash_left > 0.0 else Color(0.47, 0.40, 0.30)
+	_body_material.albedo_color = Color(0.96, 0.82, 0.59) if _hit_flash_left > 0.0 else Color(0.58, 0.61, 0.67)
 
 
 func _move(wish: Vector3, delta: float) -> void:
@@ -209,33 +209,83 @@ func _build_visual() -> void:
 	root.position.y = 1.04
 	add_child(root)
 	_body_material = StandardMaterial3D.new()
-	_body_material.albedo_color = Color(0.47, 0.40, 0.30)
-	_body_material.roughness = 0.78
+	_body_material.albedo_color = Color(0.58, 0.61, 0.67)
+	_body_material.vertex_color_use_as_albedo = true
+	_body_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_body_material.roughness = 0.90
 	_body = MeshInstance3D.new()
-	_body.name = "Body"
-	_body.mesh = SphereMesh.new()
-	_body.scale = Vector3(1.12, 1.02, 0.92)
+	_body.name = "FacetedStoneBody"
+	_body.mesh = _boulder_mesh()
 	_body.material_override = _body_material
 	root.add_child(_body)
-	var crown_material := _material(Color(0.68, 0.57, 0.39))
-	for x in [-0.70, 0.0, 0.70]:
-		var crown := MeshInstance3D.new()
-		var cone := CylinderMesh.new()
-		cone.bottom_radius = 0.27
-		cone.top_radius = 0.0
-		cone.height = 0.88 if x == 0.0 else 0.62
-		crown.mesh = cone
-		crown.position = Vector3(x, 1.0 + cone.height * 0.25, 0.0)
-		crown.material_override = crown_material
-		root.add_child(crown)
+	var foot := MeshInstance3D.new()
+	foot.name = "StoneFoot"
+	var foot_shape := CylinderMesh.new()
+	foot_shape.top_radius = 0.65
+	foot_shape.bottom_radius = 0.76
+	foot_shape.height = 0.22
+	foot_shape.radial_segments = 9
+	foot.mesh = foot_shape
+	foot.position.y = -0.86
+	foot.material_override = _material(Color(0.25, 0.28, 0.34))
+	root.add_child(foot)
+	var shard_material := _material(Color(0.55, 0.58, 0.64))
+	shard_material.vertex_color_use_as_albedo = true
+	shard_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for side in [-1.0, 1.0]:
+		var shoulder := MeshInstance3D.new()
+		shoulder.name = "StoneShoulder"
+		shoulder.mesh = _rock_shard_mesh(0.48, 0.88, 0.48, side * 0.19)
+		shoulder.position = Vector3(side * 0.59, -0.67, -0.04)
+		shoulder.material_override = shard_material
+		root.add_child(shoulder)
+		var crown_side := MeshInstance3D.new()
+		crown_side.name = "CrownSide"
+		crown_side.mesh = _rock_shard_mesh(0.47, 0.78, 0.46, side * 0.21)
+		crown_side.position = Vector3(side * 0.53, 0.65, 0.06)
+		crown_side.material_override = shard_material
+		root.add_child(crown_side)
+	var crown_center := MeshInstance3D.new()
+	crown_center.name = "CrownCenter"
+	crown_center.mesh = _rock_shard_mesh(0.55, 1.02, 0.53, -0.08)
+	crown_center.position = Vector3(0.0, 0.70, 0.11)
+	crown_center.material_override = shard_material
+	root.add_child(crown_center)
+	var socket := MeshInstance3D.new()
+	socket.name = "CoreSocket"
+	var socket_shape := SphereMesh.new()
+	socket_shape.radius = 0.46
+	socket_shape.height = 0.76
+	socket_shape.radial_segments = 8
+	socket_shape.rings = 4
+	socket.mesh = socket_shape
+	socket.scale = Vector3(0.92, 1.0, 0.40)
+	socket.position = Vector3(0.0, 0.09, -0.79)
+	socket.material_override = _material(Color(0.13, 0.15, 0.19))
+	root.add_child(socket)
 	var core := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.34
-	sphere.height = 0.68
-	core.mesh = sphere
-	core.position = Vector3(0.0, 0.06, -0.87)
-	core.material_override = _material(Color(1.0, 0.59, 0.27), true)
+	core.name = "AmberCore"
+	var crystal := SphereMesh.new()
+	crystal.radius = 0.29
+	crystal.height = 0.61
+	crystal.radial_segments = 6
+	crystal.rings = 3
+	core.mesh = crystal
+	core.scale = Vector3(0.82, 1.0, 0.48)
+	core.position = Vector3(0.0, 0.09, -0.93)
+	core.material_override = _material(Color(1.0, 0.54, 0.14), true)
 	root.add_child(core)
+	var core_light := OmniLight3D.new()
+	core_light.light_color = Color(1.0, 0.43, 0.13)
+	core_light.light_energy = 0.48
+	core_light.omni_range = 2.4
+	core_light.position = Vector3(0.0, 0.09, -1.02)
+	root.add_child(core_light)
+	var fissure_material := _material(Color(1.0, 0.42, 0.13), true)
+	for side in [-1.0, 1.0]:
+		_add_fissure(root, Vector3(side * 0.21, 0.10, -0.91), Vector3(side * 0.42, 0.32, -0.80), fissure_material)
+		_add_fissure(root, Vector3(side * 0.42, 0.32, -0.80), Vector3(side * 0.58, 0.45, -0.67), fissure_material)
+		_add_fissure(root, Vector3(side * 0.40, -0.13, -0.81), Vector3(side * 0.55, -0.37, -0.70), fissure_material)
 	_sticky_mark = MeshInstance3D.new()
 	var sticky := TorusMesh.new()
 	sticky.inner_radius = 0.91
@@ -245,14 +295,19 @@ func _build_visual() -> void:
 	_sticky_mark.material_override = _material(Color(0.18, 0.94, 0.75), true)
 	_sticky_mark.visible = false
 	root.add_child(_sticky_mark)
-	_warning_line = _flat_box("LineWarning", Vector3(0.0, 0.04, -3.0), Vector3(1.04, 0.04, 5.0), Color(1.0, 0.55, 0.23))
+	_warning_line = _flat_box("LineWarning", Vector3(0.0, 0.04, -3.0), Vector3(1.84, 0.025, 5.84), Color(0.85, 0.27, 0.16))
+	for side in [-0.88, 0.88]:
+		var border := _flat_box("LineBorder", Vector3(side, 0.064, -3.0), Vector3(0.06, 0.022, 5.84), Color(1.0, 0.47, 0.22), _warning_line)
+		border.position -= _warning_line.position
 	_warning_arc = Node3D.new()
 	_warning_arc.name = "ArcWarning"
+	_warning_arc.position.y = 0.045
 	add_child(_warning_arc)
-	for degrees in [-48.0, -24.0, 0.0, 24.0, 48.0]:
-		var stripe := _flat_box("ArcStripe", Vector3.ZERO, Vector3(0.24, 0.04, 2.45), Color(1.0, 0.31, 0.19), _warning_arc)
-		stripe.rotation.y = deg_to_rad(degrees)
-		stripe.position = stripe.basis * Vector3(0.0, 0.04, -1.28)
+	var wedge := MeshInstance3D.new()
+	wedge.name = "ArcFill"
+	wedge.mesh = _sector_mesh(2.65, 60.0)
+	wedge.material_override = _warning_material(Color(0.86, 0.26, 0.16), 0.46)
+	_warning_arc.add_child(wedge)
 	_warning_radial = MeshInstance3D.new()
 	_warning_radial.name = "RadialWarning"
 	var ring := TorusMesh.new()
@@ -260,11 +315,109 @@ func _build_visual() -> void:
 	ring.outer_radius = 3.0
 	_warning_radial.mesh = ring
 	_warning_radial.position.y = 0.045
-	_warning_radial.material_override = _material(Color(1.0, 0.40, 0.18), true)
+	_warning_radial.material_override = _material(Color(0.98, 0.39, 0.17), true)
 	add_child(_warning_radial)
+	var radial_fill := MeshInstance3D.new()
+	radial_fill.name = "RadialFill"
+	var disk := CylinderMesh.new()
+	disk.bottom_radius = 3.0
+	disk.top_radius = 3.0
+	disk.height = 0.015
+	radial_fill.mesh = disk
+	radial_fill.position.y = -0.014
+	radial_fill.material_override = _warning_material(Color(0.87, 0.28, 0.16), 0.32)
+	_warning_radial.add_child(radial_fill)
 	_warning_line.visible = false
 	_warning_arc.visible = false
 	_warning_radial.visible = false
+
+
+
+func _boulder_mesh() -> ArrayMesh:
+	var profile: Array[Vector2] = [Vector2(-0.81, 0.42), Vector2(-0.66, 0.68), Vector2(-0.27, 0.82), Vector2(0.25, 0.79), Vector2(0.70, 0.58), Vector2(0.98, 0.27)]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for ring in profile.size() - 1:
+		for sector in 12:
+			var a := _boulder_point(profile, ring, sector)
+			var b := _boulder_point(profile, ring, sector + 1)
+			var c := _boulder_point(profile, ring + 1, sector)
+			var d := _boulder_point(profile, ring + 1, sector + 1)
+			var shade := 0.81 + 0.04 * float((sector * 7 + ring * 3) % 5)
+			var tint := Color(shade * 0.90, shade * 0.94, shade)
+			_rock_facet(surface, a, c, b, tint)
+			_rock_facet(surface, b, c, d, tint.darkened(0.055))
+	return surface.commit()
+
+
+func _boulder_point(profile: Array[Vector2], ring: int, sector: int) -> Vector3:
+	var side := sector % 12
+	var angle := TAU * float(side) / 12.0
+	var radius := profile[ring].y * (1.0 + 0.055 * sin(float(side) * 2.21 + float(ring) * 0.72) + 0.035 * cos(float(side) * 3.82 - float(ring)))
+	var height := profile[ring].x + 0.028 * sin(float(side) * 1.69 + float(ring))
+	return Vector3(sin(angle) * radius, height, -cos(angle) * radius)
+
+
+func _rock_shard_mesh(width: float, height: float, depth: float, lean: float) -> ArrayMesh:
+	var low := width * 0.5
+	var back := depth * 0.5
+	var high := width * 0.16
+	var tip_depth := depth * 0.14
+	var points := [
+		Vector3(-low, 0.0, -back), Vector3(low, 0.0, -back), Vector3(low, 0.0, back), Vector3(-low, 0.0, back),
+		Vector3(-high + lean, height, -tip_depth), Vector3(high + lean, height, -tip_depth), Vector3(high + lean, height, tip_depth), Vector3(-high + lean, height, tip_depth)
+	]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var faces := [[0, 4, 1], [1, 4, 5], [1, 5, 2], [2, 5, 6], [2, 6, 3], [3, 6, 7], [3, 7, 0], [0, 7, 4], [4, 7, 5], [5, 7, 6]]
+	for face in faces:
+		_rock_facet(surface, points[face[0]], points[face[1]], points[face[2]], Color(0.80 + float(face[0] % 3) * 0.07, 0.85, 0.92))
+	return surface.commit()
+
+
+func _rock_facet(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, tint: Color) -> void:
+	var normal := (b - a).cross(c - a).normalized()
+	for point in [a, b, c]:
+		surface.set_normal(normal)
+		surface.set_color(tint)
+		surface.add_vertex(point)
+
+
+func _add_fissure(parent: Node3D, start: Vector3, finish: Vector3, tint: Material) -> void:
+	var line := MeshInstance3D.new()
+	line.name = "AmberFissure"
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.022
+	mesh.bottom_radius = 0.028
+	mesh.height = start.distance_to(finish)
+	mesh.radial_segments = 5
+	line.mesh = mesh
+	line.material_override = tint
+	line.position = (start + finish) * 0.5
+	line.quaternion = Quaternion(Vector3.UP, (finish - start).normalized())
+	parent.add_child(line)
+
+
+func _sector_mesh(radius: float, half_angle_degrees: float) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for step in 16:
+		var first_angle := deg_to_rad(-half_angle_degrees + float(step) * half_angle_degrees * 2.0 / 16.0)
+		var next_angle := deg_to_rad(-half_angle_degrees + float(step + 1) * half_angle_degrees * 2.0 / 16.0)
+		surface.set_normal(Vector3.UP)
+		surface.add_vertex(Vector3.ZERO)
+		surface.add_vertex(Vector3(sin(first_angle) * radius, 0.0, -cos(first_angle) * radius))
+		surface.add_vertex(Vector3(sin(next_angle) * radius, 0.0, -cos(next_angle) * radius))
+	return surface.commit()
+
+
+func _warning_material(tint: Color, opacity: float) -> StandardMaterial3D:
+	var material := _material(tint, true)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color.a = opacity
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.emission_energy_multiplier = 0.35
+	return material
 
 
 func _flat_box(label: String, at: Vector3, size: Vector3, tint: Color, parent: Node3D = null) -> MeshInstance3D:

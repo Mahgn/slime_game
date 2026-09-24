@@ -29,6 +29,7 @@ const GRAVITY := 20.0
 const COYOTE_SECONDS := 0.10
 const JUMP_BUFFER_SECONDS := 0.12
 const MOUSE_SENSITIVITY := 0.0025
+const BODY_TURN_RATE := 10.0
 const MAX_HEALTH := 100
 const HURT_PROTECTION := 0.45
 const ABSORB_RADIUS := 1.6
@@ -36,6 +37,8 @@ const ABSORB_SECONDS := 0.55
 const WHIP_RANGE := 2.0
 const WHIP_DAMAGE := 10
 const WHIP_HALF_ANGLE_COS := 0.642788
+
+@export_range(0.0, 1.0, 0.01) var walk_visual_strength := 1.0
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var body_mesh: MeshInstance3D = $VisualRoot/Body
@@ -63,15 +66,18 @@ var _cast_sequence := 0
 var _cast_key := ""
 var _action_direction := Vector3.FORWARD
 var _action_aim_point := Vector3.ZERO
-var _whip_visual: Node3D
+var _whip_visual: SlimeWhipVisual
+var _whip_rng := RandomNumberGenerator.new()
+var _whip_variants_left: Array[int] = []
+var _whip_variant := SlimeWhipVisual.VARIANT_RIGHT
+var _last_whip_variant := -1
 var _shell_visual: MeshInstance3D
 var _absorb_source: Node3D
 var _absorb_elapsed := 0.0
 var _absorb_requires_release := false
 var _received_casts: Dictionary = {}
 var _visual_time := 0.0
-var _back_core: MeshInstance3D
-var _back_core_material: StandardMaterial3D
+var _visual_rest_position := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -79,6 +85,8 @@ func _ready() -> void:
 	floor_snap_length = 0.20
 	floor_max_angle = deg_to_rad(45.0)
 	spring_arm.add_excluded_object(get_rid())
+	_whip_rng.randomize()
+	_visual_rest_position = visual_root.position
 	_build_slime_visual()
 	_create_whip_visual()
 	_create_shell_visual()
@@ -98,6 +106,7 @@ func _input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if health <= 0:
 		return
+	_follow_camera_heading(delta)
 	_hurt_protection_left = maxf(0.0, _hurt_protection_left - delta)
 	for ability_id: StringName in _cooldowns.keys():
 		_cooldowns[ability_id] = maxf(0.0, float(_cooldowns[ability_id]) - delta)
@@ -151,6 +160,19 @@ func _physics_process(delta: float) -> void:
 	_update_absorption(delta)
 
 
+func _follow_camera_heading(delta: float) -> void:
+	# Transfer the camera's local yaw to the physical body without changing
+	# the camera's world heading or the camera-relative movement vector.
+	var yaw_gap := wrapf(camera_yaw.rotation.y, -PI, PI)
+	var turn := yaw_gap * minf(1.0, delta * BODY_TURN_RATE)
+	rotation.y = wrapf(rotation.y + turn, -PI, PI)
+	camera_yaw.rotation.y = wrapf(camera_yaw.rotation.y - turn, -PI, PI)
+	if _action != &"":
+		var local_aim := global_basis.inverse() * _action_direction
+		visual_root.rotation.y = atan2(-local_aim.x, -local_aim.z)
+	else:
+		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, 0.0, minf(1.0, delta * BODY_TURN_RATE))
+
 func _process(delta: float) -> void:
 	_visual_time += delta
 	_landing_pulse = maxf(0.0, _landing_pulse - delta)
@@ -158,16 +180,28 @@ func _process(delta: float) -> void:
 	var speed_ratio := clampf(Vector2(velocity.x, velocity.z).length() / MOVE_SPEED, 0.0, 1.0)
 	var breath := sin(_visual_time * 2.6) * 0.018
 	var crawl := sin(_visual_time * 10.0) * speed_ratio
-	var target_scale := Vector3(1.0 + breath + speed_ratio * 0.04, 1.0 - breath - speed_ratio * 0.07 + crawl * 0.025, 1.0 + breath + speed_ratio * 0.04)
+	var whip_windup := 0.0
+	var whip_strike := 0.0
+	var whip_recoil := 0.0
+	if _action == &"slime_whip":
+		match _phase:
+			&"preparation":
+				var progress := clampf(1.0 - _phase_left / SlimeWhipVisual.PREPARATION_SECONDS, 0.0, 1.0)
+				whip_windup = smoothstep(0.0, 1.0, progress)
+			&"active":
+				var progress := clampf(1.0 - _phase_left / SlimeWhipVisual.ACTIVE_SECONDS, 0.0, 1.0)
+				whip_strike = 1.0 - 0.18 * progress
+			&"recovery":
+				var progress := clampf(1.0 - _phase_left / SlimeWhipVisual.RECOVERY_SECONDS, 0.0, 1.0)
+				whip_recoil = 0.65 * pow(1.0 - smoothstep(0.0, 0.65, progress), 2.0)
+	var target_scale := Vector3(1.0 + breath + speed_ratio * 0.04 * walk_visual_strength, 1.0 - breath + (-speed_ratio * 0.07 + crawl * 0.025) * walk_visual_strength, 1.0 + breath + speed_ratio * 0.04 * walk_visual_strength)
 	if not is_on_floor():
 		target_scale = Vector3(0.93, 1.13, 0.93)
 	if _landing_pulse > 0.0:
 		target_scale = Vector3(1.12, 0.80, 1.12)
 	if _hit_pulse > 0.0:
 		target_scale = Vector3(1.18, 0.78, 1.18)
-	if _action == &"slime_whip" and _phase == &"active":
-		target_scale = Vector3(0.87, 1.04, 1.18)
-	elif _action == &"sticky_spit" and _phase == &"preparation":
+	if _action == &"sticky_spit" and _phase == &"preparation":
 		target_scale = Vector3(1.12, 0.90, 1.12)
 	elif _action == &"slime_spikes" and _phase == &"preparation":
 		target_scale = Vector3(1.16, 0.84, 1.16)
@@ -175,15 +209,24 @@ func _process(delta: float) -> void:
 		target_scale = Vector3(0.93, 1.08, 0.93)
 	if _absorb_elapsed > 0.0:
 		target_scale += Vector3(0.035, -0.025, 0.035) * sin(_visual_time * 13.0)
-	visual_root.scale = visual_root.scale.lerp(target_scale, minf(1.0, delta * 12.0))
-	var sway := crawl * 0.055 - velocity.x * 0.012
+	# The strike reads through weight transfer and lean; the cube itself stays nearly rigid.
+	target_scale += Vector3(0.025, -0.030, 0.018) * whip_windup
+	target_scale += Vector3(-0.015, 0.012, 0.025) * whip_strike
+	visual_root.scale = visual_root.scale.lerp(target_scale, minf(1.0, delta * (24.0 if _action == &"slime_whip" else 12.0)))
+	var pose_blend := minf(1.0, delta * 28.0)
+	var side_sign := -1.0 if _whip_variant == SlimeWhipVisual.VARIANT_LEFT else (0.0 if _whip_variant == SlimeWhipVisual.VARIANT_OVERHEAD else 1.0)
+	var overhead := _whip_variant == SlimeWhipVisual.VARIANT_OVERHEAD
+	var pose_offset := Vector3(side_sign * (0.075 * whip_windup - 0.095 * whip_strike), (-0.035 if overhead else -0.020) * whip_windup + (0.012 if overhead else 0.0) * whip_strike, (0.085 if overhead else 0.070) * whip_windup - (0.140 if overhead else 0.120) * whip_strike - 0.035 * whip_recoil)
+	visual_root.position = visual_root.position.lerp(_visual_rest_position + pose_offset, pose_blend)
+	visual_root.rotation.x = lerpf(visual_root.rotation.x, (0.14 if overhead else 0.10) * whip_windup - (0.22 if overhead else 0.18) * whip_strike - 0.035 * whip_recoil, pose_blend)
+	var local_velocity := global_basis.inverse() * velocity
+	var sway := (crawl * 0.055 - local_velocity.x * 0.012) * walk_visual_strength
 	if _hit_pulse > 0.0:
 		sway += sin(_visual_time * 44.0) * 0.12
-	visual_root.rotation.z = lerpf(visual_root.rotation.z, sway, minf(1.0, delta * 8.0))
-	if is_instance_valid(_back_core):
-		_back_core.scale = Vector3.ONE * (1.0 + 0.08 * sin(_visual_time * (5.0 if equipped_ability != &"" else 2.6)))
+	visual_root.rotation.z = lerpf(visual_root.rotation.z, sway + side_sign * (0.14 * whip_windup - 0.17 * whip_strike - 0.035 * whip_recoil), pose_blend if _action == &"slime_whip" else minf(1.0, delta * 8.0))
 	if is_instance_valid(_shell_visual) and _shell_visual.visible:
 		_shell_visual.scale = Vector3.ONE * (1.0 + 0.04 * sin(_visual_time * 11.0))
+	_whip_visual.set_phase(_phase if _action == &"slime_whip" else &"", _phase_left, _whip_variant)
 
 
 func is_alive() -> bool:
@@ -205,6 +248,18 @@ func _request_slot_action(slot: int) -> void:
 	request_action(ability_id)
 
 
+func _choose_whip_variant() -> void:
+	if _whip_variants_left.is_empty():
+		_whip_variants_left.append(SlimeWhipVisual.VARIANT_RIGHT)
+		_whip_variants_left.append(SlimeWhipVisual.VARIANT_LEFT)
+		_whip_variants_left.append(SlimeWhipVisual.VARIANT_OVERHEAD)
+	var index := _whip_rng.randi_range(0, _whip_variants_left.size() - 1)
+	if _whip_variants_left.size() == SlimeWhipVisual.VARIANT_COUNT and _whip_variants_left[index] == _last_whip_variant:
+		index = (index + 1) % _whip_variants_left.size()
+	_whip_variant = _whip_variants_left.pop_at(index)
+	_last_whip_variant = _whip_variant
+
+
 func request_action(action_id: StringName) -> bool:
 	if health <= 0:
 		return false
@@ -224,7 +279,8 @@ func request_action(action_id: StringName) -> bool:
 	_phase = &"preparation"
 	match action_id:
 		&"slime_whip":
-			_phase_left = 0.12
+			_choose_whip_variant()
+			_phase_left = SlimeWhipVisual.PREPARATION_SECONDS
 		&"sticky_spit":
 			_phase_left = 0.18
 		&"slime_spikes":
@@ -241,8 +297,10 @@ func request_action(action_id: StringName) -> bool:
 		_action_direction = -camera_yaw.global_basis.z
 		_action_direction.y = 0.0
 		_action_direction = _action_direction.normalized()
-	visual_root.rotation.y = atan2(-_action_direction.x, -_action_direction.z)
-	_whip_visual.rotation.y = visual_root.rotation.y
+	var local_aim := global_basis.inverse() * _action_direction
+	visual_root.rotation.y = atan2(-local_aim.x, -local_aim.z)
+	if action_id == &"slime_whip":
+		_whip_visual.set_phase(&"preparation", _phase_left, _whip_variant)
 	action_started.emit(action_id)
 	return true
 
@@ -261,10 +319,10 @@ func _advance_action(delta: float) -> void:
 			_shell_visual.visible = true
 		else:
 			_phase = &"active"
-			_phase_left = 0.08 if _action == &"slime_whip" else (0.15 if _action == &"slime_spikes" else 0.04)
+			_phase_left = SlimeWhipVisual.ACTIVE_SECONDS if _action == &"slime_whip" else (0.15 if _action == &"slime_spikes" else 0.04)
 			match _action:
 				&"slime_whip":
-					_whip_visual.visible = true
+					_whip_visual.set_phase(&"active", _phase_left, _whip_variant)
 					_do_whip_hit()
 				&"sticky_spit":
 					_cooldowns[_action] = ABILITY.player_cooldown
@@ -273,10 +331,11 @@ func _advance_action(delta: float) -> void:
 					_cooldowns[_action] = SPIKES.player_cooldown
 					spikes_requested.emit(global_position, _action_direction, _cast_key)
 	elif _phase == &"active" or _phase == &"guard":
-		_whip_visual.visible = false
 		_shell_visual.visible = false
 		_phase = &"recovery"
-		_phase_left = 0.35 if _action == &"slime_whip" else (0.25 if _action == &"slime_spikes" else 0.20)
+		_phase_left = SlimeWhipVisual.RECOVERY_SECONDS if _action == &"slime_whip" else (0.25 if _action == &"slime_spikes" else 0.20)
+		if _action == &"slime_whip":
+			_whip_visual.set_phase(&"recovery", _phase_left, _whip_variant)
 	else:
 		_action = &""
 		_phase = &""
@@ -389,9 +448,6 @@ func grant_ability(ability_id: StringName) -> bool:
 		equipped_ability = ability_id
 	elif unlocked_slots >= 2 and second_slot_ability == &"":
 		second_slot_ability = ability_id
-	if is_instance_valid(_back_core_material):
-		_back_core_material.albedo_color = Color(0.26, 0.96, 0.92)
-		_back_core_material.emission = Color(0.08, 0.62, 0.69)
 	ability_unlocked.emit(ability_id)
 	loadout_changed.emit()
 	return true
@@ -543,29 +599,6 @@ func _build_slime_visual() -> void:
 				_add_rounded_vertex(surface, c, core)
 	body_mesh.mesh = surface.commit()
 
-	_back_core_material = StandardMaterial3D.new()
-	_back_core_material.albedo_color = Color(0.12, 0.36, 0.36)
-	_back_core_material.roughness = 0.24
-	_back_core_material.emission_enabled = true
-	_back_core_material.emission = Color(0.04, 0.22, 0.22)
-	_back_core_material.emission_energy_multiplier = 1.5
-	var core_shape := SphereMesh.new()
-	core_shape.radius = 0.105
-	core_shape.height = 0.21
-	_back_core = MeshInstance3D.new()
-	_back_core.name = "AbilityCore"
-	_back_core.mesh = core_shape
-	_back_core.material_override = _back_core_material
-	_back_core.position = Vector3(0.0, 0.10, 0.46)
-	visual_root.add_child(_back_core)
-	for side in [-1.0, 1.0]:
-		var droplet := MeshInstance3D.new()
-		droplet.name = "BackDroplet"
-		droplet.mesh = core_shape
-		droplet.material_override = _back_core_material
-		droplet.position = Vector3(side * 0.21, -0.09, 0.42)
-		droplet.scale = Vector3.ONE * 0.43
-		visual_root.add_child(droplet)
 
 
 func _add_rounded_vertex(surface: SurfaceTool, point: Vector3, core: Vector3) -> void:
@@ -580,24 +613,10 @@ func _add_rounded_vertex(surface: SurfaceTool, point: Vector3, core: Vector3) ->
 
 
 func _create_whip_visual() -> void:
-	_whip_visual = Node3D.new()
+	_whip_visual = SlimeWhipVisual.new()
 	_whip_visual.name = "SlimeWhip"
-	_whip_visual.position = Vector3(0.0, 0.65, 0.0)
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.24, 0.98, 0.72)
-	material.emission_enabled = true
-	material.emission = Color(0.09, 0.58, 0.34)
-	material.emission_energy_multiplier = 1.1
-	var base := Vector3(0.26, 0.25, -0.22)
-	var bend := Vector3(0.78, 0.52, -1.10)
-	var tip := Vector3(0.52, 0.25, -1.96)
-	_add_whip_link(base, bend, 0.14, material)
-	_add_whip_link(bend, tip, 0.17, material)
-	_add_whip_joint(base, 0.14, material)
-	_add_whip_joint(bend, 0.18, material)
-	_add_whip_joint(tip, 0.23, material)
-	_whip_visual.visible = false
-	add_child(_whip_visual)
+	_whip_visual.position = Vector3(0.0, 0.22, 0.0)
+	visual_root.add_child(_whip_visual)
 
 
 func _create_shell_visual() -> void:
@@ -619,28 +638,3 @@ func _create_shell_visual() -> void:
 	_shell_visual.material_override = material
 	_shell_visual.visible = false
 	add_child(_shell_visual)
-
-
-func _add_whip_link(start: Vector3, finish: Vector3, radius: float, material: Material) -> void:
-	var segment := MeshInstance3D.new()
-	var shape := CylinderMesh.new()
-	shape.top_radius = radius
-	shape.bottom_radius = radius
-	shape.height = start.distance_to(finish)
-	segment.mesh = shape
-	segment.position = (start + finish) * 0.5
-	segment.quaternion = Quaternion(Vector3.UP, (finish - start).normalized())
-	segment.material_override = material
-	_whip_visual.add_child(segment)
-
-
-func _add_whip_joint(at: Vector3, radius: float, material: Material) -> void:
-	var segment := MeshInstance3D.new()
-	var shape := SphereMesh.new()
-	shape.radius = 1.0
-	shape.height = 2.0
-	segment.mesh = shape
-	segment.position = at
-	segment.scale = Vector3.ONE * radius
-	segment.material_override = material
-	_whip_visual.add_child(segment)

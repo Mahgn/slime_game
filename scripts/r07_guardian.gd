@@ -191,42 +191,195 @@ func _add_final_buttons() -> void:
 
 
 func _build_room() -> void:
-	_block("ArenaFloor", Vector3(0.0, -0.2, 0.0), Vector3(18.0, 0.4, 18.0), Color(0.35, 0.40, 0.42))
-	_block("WestWall", Vector3(-9.2, 1.6, 0.0), Vector3(0.4, 3.2, 18.4), Color(0.39, 0.45, 0.46))
-	_block("EastWall", Vector3(9.2, 1.6, 0.0), Vector3(0.4, 3.2, 18.4), Color(0.39, 0.45, 0.46))
-	_block("EntryWall", Vector3(0.0, 1.6, 9.2), Vector3(18.4, 3.2, 0.4), Color(0.39, 0.45, 0.46))
-	_block("ExitWallLeft", Vector3(-5.3, 1.6, -9.2), Vector3(7.8, 3.2, 0.4), Color(0.39, 0.45, 0.46))
-	_block("ExitWallRight", Vector3(5.3, 1.6, -9.2), Vector3(7.8, 3.2, 0.4), Color(0.39, 0.45, 0.46))
-	_block("HerdFloor", Vector3(0.0, -0.2, -10.9), Vector3(6.2, 0.4, 4.2), Color(0.48, 0.55, 0.51))
-	_block("HerdEnd", Vector3(0.0, 1.6, -13.2), Vector3(6.4, 3.2, 0.3), Color(0.53, 0.60, 0.58))
-	_gate = _block("ExitGate", Vector3(0.0, 1.4, -9.2), Vector3(2.8, 2.8, 0.35), Color(0.30, 0.37, 0.39))
+	_block("ArenaFloor", Vector3(0.0, -0.2, 0.0), Vector3(18.0, 0.4, 18.0), Color(0.16, 0.18, 0.22))
+	_block("WestWall", Vector3(-9.2, 1.6, 0.0), Vector3(0.4, 3.2, 18.4), Color(0.27, 0.29, 0.33))
+	_block("EastWall", Vector3(9.2, 1.6, 0.0), Vector3(0.4, 3.2, 18.4), Color(0.27, 0.29, 0.33))
+	_block("EntryWall", Vector3(0.0, 1.6, 9.2), Vector3(18.4, 3.2, 0.4), Color(0.27, 0.29, 0.33))
+	_block("ExitWallLeft", Vector3(-5.3, 1.6, -9.2), Vector3(7.8, 3.2, 0.4), Color(0.27, 0.29, 0.33))
+	_block("ExitWallRight", Vector3(5.3, 1.6, -9.2), Vector3(7.8, 3.2, 0.4), Color(0.27, 0.29, 0.33))
+	_add_floor_tiles()
+	_add_wall_courses()
+	_add_wall_buttresses()
+	_block("HerdFloor", Vector3(0.0, -0.2, -10.9), Vector3(6.2, 0.4, 4.2), Color(0.43, 0.48, 0.47))
+	_block("HerdEnd", Vector3(0.0, 1.6, -13.2), Vector3(6.4, 3.2, 0.3), Color(0.43, 0.48, 0.47))
+	_gate = _block("ExitGate", Vector3(0.0, 1.4, -9.2), Vector3(2.8, 2.8, 0.35), Color(0.20, 0.24, 0.28))
+	_add_gate_trim()
 	_exit_mark = _visual_box("ExitMark", Vector3(0.0, 0.04, -10.4), Vector3(2.7, 0.08, 0.32), Color(1.0, 0.88, 0.50), true)
 	_exit_mark.visible = false
-	_visual_box("GateLight", Vector3(0.0, 3.02, -9.0), Vector3(3.3, 0.36, 0.15), Color(1.0, 0.86, 0.51), true)
-	_visual_box("ArenaRing", Vector3(0.0, 0.02, -3.8), Vector3(4.4, 0.04, 0.14), Color(0.81, 0.60, 0.35), true)
+	_visual_box("GateLight", Vector3(0.0, 3.02, -8.81), Vector3(2.85, 0.12, 0.08), Color(1.0, 0.72, 0.38), true)
 	for x in [-1.2, 0.0, 1.2]:
 		_add_herd_slime(Vector3(x, 0.0, -11.55))
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.16, 0.21, 0.21)
+	environment.background_color = Color(0.11, 0.15, 0.22)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.62, 0.68, 0.65)
-	environment.ambient_light_energy = 0.83
+	environment.ambient_light_color = Color(0.64, 0.66, 0.70)
+	environment.ambient_light_energy = 0.56
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = environment
 	add_child(world_environment)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52.0, -20.0, 0.0)
-	sun.light_energy = 1.15
-	sun.light_color = Color(1.0, 0.94, 0.78)
+	sun.light_energy = 0.82
+	sun.light_color = Color(0.94, 0.93, 0.91)
 	sun.shadow_enabled = true
 	add_child(sun)
 	var exit_light := OmniLight3D.new()
-	exit_light.position = Vector3(0.0, 3.1, -10.6)
-	exit_light.light_color = Color(1.0, 0.88, 0.60)
-	exit_light.light_energy = 1.5
+	exit_light.position = Vector3(0.0, 2.8, -9.4)
+	exit_light.light_color = Color(1.0, 0.77, 0.46)
+	exit_light.light_energy = 3.0
 	exit_light.omni_range = 11.0
 	add_child(exit_light)
+
+
+
+func _add_floor_tiles() -> void:
+	var dark: Array[Vector3] = []
+	var middle: Array[Vector3] = []
+	var light: Array[Vector3] = []
+	for row in 12:
+		for column in 8:
+			var stagger := 0.16 if row % 2 == 0 else -0.16
+			var at := Vector3(-7.28 + float(column) * 2.08 + stagger, 0.019, -8.25 + float(row) * 1.50)
+			match (row * 5 + column * 7) % 5:
+				0, 3:
+					dark.append(at)
+				1, 4:
+					middle.append(at)
+				_:
+					light.append(at)
+	_add_instanced_slab("FloorSlabsDark", dark, Color(0.25, 0.28, 0.32))
+	_add_instanced_slab("FloorSlabsMid", middle, Color(0.28, 0.31, 0.35))
+	_add_instanced_slab("FloorSlabsLight", light, Color(0.31, 0.34, 0.38))
+
+
+func _add_instanced_slab(label: String, positions: Array[Vector3], tint: Color) -> void:
+	var mesh := _slab_mesh()
+	var material := _stone(tint)
+	material.vertex_color_use_as_albedo = true
+	mesh.surface_set_material(0, material)
+	var instances := MultiMesh.new()
+	instances.transform_format = MultiMesh.TRANSFORM_3D
+	instances.mesh = mesh
+	instances.instance_count = positions.size()
+	for index in positions.size():
+		instances.set_instance_transform(index, Transform3D(Basis(), positions[index]))
+	var visuals := MultiMeshInstance3D.new()
+	visuals.name = label
+	visuals.multimesh = instances
+	add_child(visuals)
+
+
+func _slab_mesh() -> ArrayMesh:
+	var outer := [Vector3(-0.96, -0.019, -0.66), Vector3(0.96, -0.019, -0.66), Vector3(0.96, -0.019, 0.66), Vector3(-0.96, -0.019, 0.66)]
+	var top := [Vector3(-0.90, 0.019, -0.59), Vector3(0.90, 0.019, -0.59), Vector3(0.90, 0.019, 0.59), Vector3(-0.90, 0.019, 0.59)]
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_add_slab_triangle(surface, top[0], top[3], top[2], Color.WHITE)
+	_add_slab_triangle(surface, top[0], top[2], top[1], Color.WHITE)
+	for side in 4:
+		var next := (side + 1) % 4
+		_add_slab_triangle(surface, outer[side], top[side], top[next], Color(0.67, 0.70, 0.75))
+		_add_slab_triangle(surface, outer[side], top[next], outer[next], Color(0.67, 0.70, 0.75))
+	return surface.commit()
+
+
+func _add_slab_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, tint: Color) -> void:
+	var normal := (b - a).cross(c - a).normalized()
+	for point in [a, b, c]:
+		surface.set_normal(normal)
+		surface.set_color(tint)
+		surface.set_uv(Vector2((point.x + 0.96) / 1.92, (point.z + 0.66) / 1.32))
+		surface.add_vertex(point)
+
+
+func _add_wall_courses() -> void:
+	var back: Array[Vector3] = []
+	var sides: Array[Vector3] = []
+	for row in 4:
+		var height := 0.40 + float(row) * 0.80
+		var shift := 0.36 if row % 2 == 0 else -0.36
+		for column in 8:
+			var along := -7.875 + float(column) * 2.25 + shift
+			sides.append(Vector3(-8.96, height, along))
+			sides.append(Vector3(8.96, height, along))
+		for along in [-7.875, -5.625, -3.375, 3.375, 5.625, 7.875]:
+			back.append(Vector3(along + shift * 0.25, height, -8.96))
+	_add_instanced_stone("BackWallCourses", Vector3(2.17, 0.73, 0.075), back, Color(0.30, 0.33, 0.38))
+	_add_instanced_stone("SideWallCourses", Vector3(0.075, 0.73, 2.12), sides, Color(0.29, 0.32, 0.37))
+
+
+func _add_wall_buttresses() -> void:
+	var stone := Color(0.25, 0.28, 0.33)
+	var edge := Color(0.38, 0.40, 0.43)
+	for side in [-1.0, 1.0]:
+		_visual_box("WallCoping", Vector3(side * 8.92, 3.26, 0.0), Vector3(0.67, 0.23, 18.0), edge)
+		for along in [-6.5, -2.25, 2.0, 6.25]:
+			_visual_box("Buttress", Vector3(side * 8.79, 1.85, along), Vector3(0.55, 3.70, 0.65), stone)
+			_visual_box("ButtressFoot", Vector3(side * 8.72, 0.27, along), Vector3(0.76, 0.54, 0.91), edge)
+			_visual_box("ButtressCap", Vector3(side * 8.76, 3.71, along), Vector3(0.79, 0.22, 0.90), edge)
+	for across in [-7.0, -3.6, 3.6, 7.0]:
+		_visual_box("BackPier", Vector3(across, 1.69, -8.76), Vector3(0.53, 3.38, 0.58), stone)
+		_visual_box("BackPierCap", Vector3(across, 3.38, -8.76), Vector3(0.73, 0.22, 0.73), edge)
+
+
+func _add_instanced_stone(label: String, size: Vector3, positions: Array[Vector3], tint: Color) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	mesh.material = _stone(tint)
+	var instances := MultiMesh.new()
+	instances.transform_format = MultiMesh.TRANSFORM_3D
+	instances.mesh = mesh
+	instances.instance_count = positions.size()
+	for index in positions.size():
+		instances.set_instance_transform(index, Transform3D(Basis(), positions[index]))
+	var visuals := MultiMeshInstance3D.new()
+	visuals.name = label
+	visuals.multimesh = instances
+	add_child(visuals)
+
+
+func _add_gate_trim() -> void:
+	var pillar_color := Color(0.44, 0.43, 0.43)
+	var edge_color := Color(0.58, 0.54, 0.48)
+	for side in [-1.0, 1.0]:
+		_visual_box("PortalPillar", Vector3(side * 1.87, 1.91, -8.71), Vector3(0.64, 3.82, 0.72), pillar_color)
+		_visual_box("PortalFoot", Vector3(side * 1.87, 0.36, -8.65), Vector3(0.94, 0.72, 0.91), edge_color)
+		_visual_box("PortalCapital", Vector3(side * 1.87, 3.74, -8.71), Vector3(0.92, 0.33, 0.84), edge_color)
+		var arch := _visual_box("PortalArch", Vector3(side * 1.02, 4.11, -8.72), Vector3(2.06, 0.48, 0.77), pillar_color)
+		arch.rotation.z = -side * 0.45
+		_visual_box("GateInnerGlow", Vector3(side * 1.43, 1.42, -8.27), Vector3(0.045, 2.55, 0.05), Color(0.98, 0.61, 0.28), true)
+	var keystone := _visual_box("PortalKeystone", Vector3(0.0, 4.56, -8.68), Vector3(0.68, 0.68, 0.86), edge_color)
+	keystone.rotation.z = PI * 0.25
+	_visual_box("PortalCrest", Vector3(0.0, 5.07, -8.79), Vector3(0.30, 0.48, 0.42), Color(0.69, 0.60, 0.46))
+	_add_surface_backdrop()
+
+
+func _add_surface_backdrop() -> void:
+	var backdrop := MeshInstance3D.new()
+	backdrop.name = "SurfaceLight"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(3.12, 2.58)
+	backdrop.mesh = quad
+	backdrop.position = Vector3(0.0, 1.45, -13.01)
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+void fragment() {
+	vec3 low = vec3(0.86, 0.61, 0.34);
+	vec3 high = vec3(0.53, 0.66, 0.73);
+	vec3 daylight = mix(high, low, smoothstep(0.10, 0.98, UV.y));
+	float sun = 1.0 - smoothstep(0.07, 0.22, distance(UV, vec2(0.53, 0.57)));
+	daylight = mix(daylight, vec3(1.0, 0.91, 0.65), sun * 0.86);
+	ALBEDO = daylight;
+	EMISSION = daylight * 1.35;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	backdrop.material_override = material
+	add_child(backdrop)
 
 
 func _add_herd_slime(at: Vector3) -> void:

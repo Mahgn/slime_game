@@ -132,18 +132,18 @@ func _test_t03a_mouse_camera() -> String:
 	await process_frame
 	await process_frame
 	var player := main.get_node("SlimePlayer") as SlimeController
-	var initial_yaw := player.camera_yaw.rotation.y
+	var initial_yaw := player.camera_yaw.global_rotation.y
 	var initial_pitch := player.camera_pitch.rotation.x
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	_send_mouse_motion(Vector2(100.0, -40.0))
 	await process_frame
-	var moved_yaw := player.camera_yaw.rotation.y
+	var moved_yaw := player.camera_yaw.global_rotation.y
 	var moved_pitch := player.camera_pitch.rotation.x
 
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_send_mouse_motion(Vector2(100.0, -40.0))
 	await process_frame
-	var visible_still := is_equal_approx(player.camera_yaw.rotation.y, moved_yaw) and is_equal_approx(player.camera_pitch.rotation.x, moved_pitch)
+	var visible_still := is_equal_approx(player.camera_yaw.global_rotation.y, moved_yaw) and is_equal_approx(player.camera_pitch.rotation.x, moved_pitch)
 
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_send_pause_action()
@@ -151,13 +151,13 @@ func _test_t03a_mouse_camera() -> String:
 	var paused_now := paused and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	_send_mouse_motion(Vector2(100.0, -40.0))
 	await process_frame
-	var paused_still := is_equal_approx(player.camera_yaw.rotation.y, moved_yaw) and is_equal_approx(player.camera_pitch.rotation.x, moved_pitch)
+	var paused_still := is_equal_approx(player.camera_yaw.global_rotation.y, moved_yaw) and is_equal_approx(player.camera_pitch.rotation.x, moved_pitch)
 	_send_pause_action()
 	await process_frame
 	var resumed := not paused and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	_send_mouse_motion(Vector2(100.0, -40.0))
 	await process_frame
-	var resumed_turn := absf(player.camera_yaw.rotation.y - moved_yaw) > 0.01
+	var resumed_turn := absf(player.camera_yaw.global_rotation.y - moved_yaw) > 0.01
 	print("T03A mouse: captured=%s yaw %.3f -> %.3f pitch %.3f -> %.3f visible-still=%s paused=%s paused-still=%s resumed=%s resumed-turn=%s" % [str(captured), initial_yaw, moved_yaw, initial_pitch, moved_pitch, str(visible_still), str(paused_now), str(paused_still), str(resumed), str(resumed_turn)])
 	await _discard_fixture(main)
 	if not captured:
