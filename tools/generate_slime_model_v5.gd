@@ -5,6 +5,11 @@ const LAT_STEPS := 48
 const SIDE_STEPS := 96
 const EYE_STEPS := 32
 const EYE_RINGS := 4
+const EYE_RADIUS_X := 0.146
+const EYE_RADIUS_Y := 0.160
+const EYE_CENTER_PROTRUSION := 0.022
+const EYE_RIM_PROTRUSION := -0.004
+const GLINT_SURFACE_OFFSET := 0.003
 const VERTEX_CODE := """
 uniform float gel_time = 0.0;
 uniform float gel_energy = 0.0;
@@ -51,9 +56,9 @@ func _generate() -> void:
 		var normal := Vector3(side * 0.48, 0.0, -0.877).normalized()
 		var tangent := Vector3(-normal.z, 0.0, normal.x)
 		var eye_center := Vector3(side * 0.195, 0.09, -0.438)
-		eye_details.append({"center": eye_center, "normal": normal, "rx": 0.13, "ry": 0.145, "lift": 0.025, "dome": 0.014})
-		highlight_details.append({"center": eye_center + tangent * -0.035 + Vector3.UP * 0.038, "normal": normal, "rx": 0.041, "ry": 0.045, "lift": 0.051, "dome": 0.002})
-		highlight_details.append({"center": eye_center + tangent * 0.038 - Vector3.UP * 0.023, "normal": normal, "rx": 0.014, "ry": 0.016, "lift": 0.051, "dome": 0.001})
+		eye_details.append({"center": eye_center, "normal": normal, "rx": EYE_RADIUS_X, "ry": EYE_RADIUS_Y, "dome": 0.0})
+		highlight_details.append({"center": eye_center + tangent * -0.035 + Vector3.UP * 0.038, "eye_center": eye_center, "normal": normal, "rx": 0.041, "ry": 0.045, "dome": 0.002})
+		highlight_details.append({"center": eye_center + tangent * 0.038 - Vector3.UP * 0.023, "eye_center": eye_center, "normal": normal, "rx": 0.014, "ry": 0.016, "dome": 0.001})
 
 	model.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _oval_arrays(eye_details))
 	model.surface_set_name(1, "forest_green_eyes")
@@ -163,8 +168,9 @@ func _oval_arrays(details: Array[Dictionary]) -> Array:
 		var tangent := Vector3(-outward.z, 0.0, outward.x)
 		var rx: float = detail["rx"]
 		var ry: float = detail["ry"]
-		var lift: float = detail["lift"]
 		var dome: float = detail["dome"]
+		var eye_center: Vector3 = detail.get("eye_center", center)
+		var glint_offset := GLINT_SURFACE_OFFSET if detail.has("eye_center") else 0.0
 		var first := positions.size()
 		for ring_index in range(EYE_RINGS + 1):
 			var radius := float(ring_index) / float(EYE_RINGS)
@@ -172,7 +178,10 @@ func _oval_arrays(details: Array[Dictionary]) -> Array:
 				var angle := TAU * float(segment) / float(EYE_STEPS)
 				var offset := tangent * (cos(angle) * rx * radius) + Vector3.UP * (sin(angle) * ry * radius)
 				var point := center + offset
-				positions.append(Vector3(point.x, point.y, _front_surface_z(point.x, point.y) - lift - dome * (1.0 - radius * radius)))
+				# Sink the eye perimeter into the gel; the center stays gently raised.
+				# Glints follow that same curved eye surface instead of hovering ahead.
+				var eye_z := _front_surface_z(point.x, point.y) - _eye_protrusion(point.x, point.y, eye_center, tangent.x)
+				positions.append(Vector3(point.x, point.y, eye_z - glint_offset - dome * (1.0 - radius * radius)))
 				normals.append((outward + offset * (0.6 if dome > 0.005 else 0.0)).normalized())
 		for ring_index in range(EYE_RINGS):
 			for segment in range(EYE_STEPS):
@@ -195,5 +204,12 @@ func _front_surface_z(x: float, y: float) -> float:
 	var fullness := 1.0 + 0.035 * maxf(0.0, -vertical) - 0.015 * maxf(0.0, vertical)
 	var horizontal_radius := maxf(0.001, 0.47 * ring * fullness)
 	var horizontal := pow(clampf(absf(x) / horizontal_radius, 0.0, 1.0), 2.0 / 0.44)
-	return -horizontal_radius * pow(maxf(0.0, 1.0 - horizontal), 0.44 * 0.5) * 1.04
+	return -horizontal_radius * pow(maxf(0.0, 1.0 - horizontal), 0.44 * 0.5)
+
+
+func _eye_protrusion(x: float, y: float, center: Vector3, tangent_x: float) -> float:
+	var horizontal := (x - center.x) / (EYE_RADIUS_X * absf(tangent_x))
+	var vertical := (y - center.y) / EYE_RADIUS_Y
+	var radius_squared := clampf(horizontal * horizontal + vertical * vertical, 0.0, 1.0)
+	return lerpf(EYE_CENTER_PROTRUSION, EYE_RIM_PROTRUSION, pow(radius_squared, 4.0))
 

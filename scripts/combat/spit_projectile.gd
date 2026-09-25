@@ -138,7 +138,10 @@ func _physics_process(delta: float) -> void:
 		var damaged := false
 		var target: Object = hit["collider"]
 		if is_instance_valid(target) and target.has_method("receive_hit"):
-			damaged = target.call("receive_hit", damage, cast_key, team)
+			if target is SlimeController:
+				damaged = (target as SlimeController).receive_hit(damage, cast_key, team, direction)
+			else:
+				damaged = target.call("receive_hit", damage, cast_key, team)
 			if damaged and team == &"player" and target.has_method("apply_sticky"):
 				target.call("apply_sticky", slow_factor, slow_seconds)
 		resolved.emit(global_position, damaged)

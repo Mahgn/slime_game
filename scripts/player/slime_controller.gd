@@ -25,23 +25,36 @@ const GROUND_ACCELERATION := 28.0
 const GROUND_BRAKING := 38.0
 const AIR_ACCELERATION := 18.2
 const JUMP_SPEED := 6.4
+const CHARGED_JUMP_SPEED := 8.4
+const JUMP_CHARGE_MIN_SECONDS := 0.15
+const JUMP_CHARGE_FULL_SECONDS := 0.70
 const GRAVITY := 20.0
+const STANDING_COLLISION_HEIGHT := 0.80
+const STANDING_COLLISION_CENTER_Y := 0.40
+const COMPRESSED_COLLISION_HEIGHT := 0.50
+const COMPRESSED_COLLISION_RADIUS := 0.24
+const COMPRESSED_COLLISION_CENTER_Y := 0.25
+const STANDING_CAMERA_HEIGHT := 1.42
+const COMPRESSED_CAMERA_HEIGHT := 0.48
+const COMPRESSED_CAMERA_DISTANCE := 2.70
 const COYOTE_SECONDS := 0.10
 const JUMP_BUFFER_SECONDS := 0.12
 const MOUSE_SENSITIVITY := 0.0025
 const BODY_TURN_RATE := 10.0
 const MAX_HEALTH := 100
 const HURT_PROTECTION := 0.45
+const HIT_REACTION_SECONDS := 0.36
 const ABSORB_RADIUS := 1.6
 const ABSORB_SECONDS := 0.55
 const WHIP_RANGE := 2.0
 const WHIP_DAMAGE := 10
 const WHIP_HALF_ANGLE_COS := 0.642788
 
-@export_range(0.0, 1.0, 0.01) var walk_visual_strength := 1.0
+@export_range(0.0, 1.0, 0.01) var walk_visual_strength := 0.20
 
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var visual_root: Node3D = $VisualRoot
-@onready var body_mesh: MeshInstance3D = $VisualRoot/Body
+@onready var hero_visual: MeshInstance3D = $VisualRoot/SlimeHeroModelV5
 @onready var camera_yaw: Node3D = $CameraYaw
 @onready var camera_pitch: Node3D = $CameraYaw/CameraPitch
 @onready var spring_arm: SpringArm3D = $CameraYaw/CameraPitch/SpringArm3D
@@ -49,6 +62,13 @@ const WHIP_HALF_ANGLE_COS := 0.642788
 
 var _coyote_left := 0.0
 var _jump_buffer_left := 0.0
+var _jump_charging := false
+var _jump_charge_seconds := 0.0
+var _jump_impulse_pending := 0.0
+var _low_passage_sources: Dictionary = {}
+var _is_compressed := false
+var _standing_collision_shape: CapsuleShape3D
+var _compressed_collision_shape: CapsuleShape3D
 var _landing_pulse := 0.0
 var health := MAX_HEALTH
 var equipped_ability: StringName = &""
@@ -56,6 +76,9 @@ var second_slot_ability: StringName = &""
 var unlocked_slots := 1
 var learned_abilities: Dictionary = {}
 var _hit_pulse := 0.0
+var _hit_local_direction := Vector3.BACK
+var _hit_flash_light: OmniLight3D
+var _ground_trail: SlimeGroundTrail
 var _hurt_protection_left := 0.0
 var _cooldowns: Dictionary = {}
 var _action: StringName = &""
@@ -78,6 +101,8 @@ var _absorb_requires_release := false
 var _received_casts: Dictionary = {}
 var _visual_time := 0.0
 var _visual_rest_position := Vector3.ZERO
+var _camera_pitch_desired := 0.0
+var _spring_rest_length := 0.0
 
 
 func _ready() -> void:
@@ -87,8 +112,16 @@ func _ready() -> void:
 	spring_arm.add_excluded_object(get_rid())
 	_whip_rng.randomize()
 	_visual_rest_position = visual_root.position
-	_build_slime_visual()
+	_camera_pitch_desired = camera_pitch.rotation.x
+	_spring_rest_length = spring_arm.spring_length
+	_standing_collision_shape = collision_shape.shape as CapsuleShape3D
+	_compressed_collision_shape = CapsuleShape3D.new()
+	_compressed_collision_shape.radius = COMPRESSED_COLLISION_RADIUS
+	_compressed_collision_shape.height = COMPRESSED_COLLISION_HEIGHT
+	_create_hit_flash()
+	_create_ground_trail()
 	_create_whip_visual()
+	hero_visual.call("setup", self, _whip_visual)
 	_create_shell_visual()
 	health_changed.emit(health, MAX_HEALTH)
 
@@ -96,16 +129,19 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		camera_yaw.rotation.y -= event.screen_relative.x * MOUSE_SENSITIVITY
-		camera_pitch.rotation.x = clampf(
-			camera_pitch.rotation.x - event.screen_relative.y * MOUSE_SENSITIVITY,
+		_camera_pitch_desired = clampf(
+			_camera_pitch_desired - event.screen_relative.y * MOUSE_SENSITIVITY,
 			deg_to_rad(-65.0),
 			deg_to_rad(20.0)
 		)
+		if not _is_compressed:
+			camera_pitch.rotation.x = _camera_pitch_desired
 
 
 func _physics_process(delta: float) -> void:
 	if health <= 0:
 		return
+	_update_compression(delta)
 	_follow_camera_heading(delta)
 	_hurt_protection_left = maxf(0.0, _hurt_protection_left - delta)
 	for ability_id: StringName in _cooldowns.keys():
@@ -123,11 +159,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_coyote_left = maxf(0.0, _coyote_left - delta)
 
-	if Input.is_action_just_pressed(&"jump"):
-		_jump_buffer_left = JUMP_BUFFER_SECONDS
-		cancel_absorb()
-	else:
-		_jump_buffer_left = maxf(0.0, _jump_buffer_left - delta)
+	_update_jump_input(delta, was_on_floor)
 
 	var axes := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	var move_direction := camera_yaw.global_basis.x * axes.x + camera_yaw.global_basis.z * axes.y
@@ -145,20 +177,104 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, target_velocity.x, acceleration * delta)
 	velocity.z = move_toward(velocity.z, target_velocity.z, acceleration * delta)
 
-	if _jump_buffer_left > 0.0 and _coyote_left > 0.0:
-		velocity.y = JUMP_SPEED
-		_jump_buffer_left = 0.0
-		_coyote_left = 0.0
+	if _jump_impulse_pending > 0.0:
+		velocity.y = _jump_impulse_pending
+		_jump_impulse_pending = 0.0
 	elif not was_on_floor:
 		velocity.y -= GRAVITY * delta
 	else:
 		velocity.y = minf(velocity.y, 0.0)
 
+	var impact_speed := -velocity.y
 	move_and_slide()
+	_whip_visual.refresh_contact(_phase if _action == &"slime_whip" else &"", _phase_left, _whip_variant, get_rid())
 	if not was_on_floor and is_on_floor():
 		_landing_pulse = 0.14
+		_ground_trail.add_landing_splash(impact_speed)
 	_update_absorption(delta)
 
+
+
+func set_low_passage_active(source: Node, active: bool) -> void:
+	if not is_instance_valid(source):
+		return
+	var source_id := source.get_instance_id()
+	if active:
+		_low_passage_sources[source_id] = weakref(source)
+	else:
+		_low_passage_sources.erase(source_id)
+
+
+func is_compressed() -> bool:
+	return _is_compressed
+
+
+func get_jump_charge_ratio() -> float:
+	if not _jump_charging:
+		return 0.0
+	return clampf(_jump_charge_seconds / JUMP_CHARGE_FULL_SECONDS, 0.0, 1.0)
+
+
+func _update_compression(delta: float) -> void:
+	for source_id: int in _low_passage_sources.keys():
+		var source_ref := _low_passage_sources[source_id] as WeakRef
+		if source_ref.get_ref() == null:
+			_low_passage_sources.erase(source_id)
+	if not _low_passage_sources.is_empty() and not _is_compressed:
+		collision_shape.shape = _compressed_collision_shape
+		collision_shape.position.y = COMPRESSED_COLLISION_CENTER_Y
+		_is_compressed = true
+	elif _low_passage_sources.is_empty() and _is_compressed and _can_stand():
+		collision_shape.shape = _standing_collision_shape
+		collision_shape.position.y = STANDING_COLLISION_CENTER_Y
+		_is_compressed = false
+	var camera_height := COMPRESSED_CAMERA_HEIGHT if _is_compressed else STANDING_CAMERA_HEIGHT
+	camera_yaw.position.y = move_toward(camera_yaw.position.y, camera_height, 8.0 * delta)
+	var pitch_target := 0.0 if _is_compressed else _camera_pitch_desired
+	camera_pitch.rotation.x = move_toward(camera_pitch.rotation.x, pitch_target, 8.0 * delta)
+	var arm_target := COMPRESSED_CAMERA_DISTANCE if _is_compressed else _spring_rest_length
+	spring_arm.spring_length = move_toward(spring_arm.spring_length, arm_target, 8.0 * delta)
+
+
+func _can_stand() -> bool:
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _standing_collision_shape
+	query.transform = Transform3D(global_basis, global_position + Vector3.UP * (STANDING_COLLISION_CENTER_Y + 0.015))
+	query.collision_mask = collision_mask
+	query.exclude = [get_rid()]
+	return get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+func _update_jump_input(delta: float, was_on_floor: bool) -> void:
+	if _is_compressed:
+		_jump_buffer_left = 0.0
+		_jump_charging = false
+		_jump_charge_seconds = 0.0
+		_jump_impulse_pending = 0.0
+		return
+	if Input.is_action_just_pressed(&"jump"):
+		_jump_buffer_left = JUMP_BUFFER_SECONDS
+		cancel_absorb()
+	else:
+		_jump_buffer_left = maxf(0.0, _jump_buffer_left - delta)
+	if not _jump_charging and _jump_buffer_left > 0.0 and _coyote_left > 0.0:
+		_jump_charging = true
+		_jump_charge_seconds = 0.0
+		_jump_buffer_left = 0.0
+	if not _jump_charging:
+		return
+	if was_on_floor:
+		_jump_charge_seconds = minf(_jump_charge_seconds + delta, JUMP_CHARGE_FULL_SECONDS)
+	if Input.is_action_just_released(&"jump") or not Input.is_action_pressed(&"jump"):
+		if _coyote_left > 0.0:
+			var charge := clampf((_jump_charge_seconds - JUMP_CHARGE_MIN_SECONDS) / (JUMP_CHARGE_FULL_SECONDS - JUMP_CHARGE_MIN_SECONDS), 0.0, 1.0)
+			_jump_impulse_pending = lerpf(JUMP_SPEED, CHARGED_JUMP_SPEED, smoothstep(0.0, 1.0, charge))
+			_coyote_left = 0.0
+		_jump_charging = false
+		_jump_charge_seconds = 0.0
+	elif _coyote_left <= 0.0:
+		_jump_charging = false
+		_jump_charge_seconds = 0.0
 
 func _follow_camera_heading(delta: float) -> void:
 	# Transfer the camera's local yaw to the physical body without changing
@@ -174,9 +290,18 @@ func _follow_camera_heading(delta: float) -> void:
 		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, 0.0, minf(1.0, delta * BODY_TURN_RATE))
 
 func _process(delta: float) -> void:
+	if health <= 0:
+		return
 	_visual_time += delta
 	_landing_pulse = maxf(0.0, _landing_pulse - delta)
 	_hit_pulse = maxf(0.0, _hit_pulse - delta)
+	var hit_pose := 0.0
+	if _hit_pulse > 0.0:
+		var hit_progress := 1.0 - _hit_pulse / HIT_REACTION_SECONDS
+		hit_pose = cos(hit_progress * PI * 1.2) * pow(1.0 - hit_progress, 2.0)
+		_set_hit_flash_strength(pow(1.0 - hit_progress, 3.0))
+	else:
+		_set_hit_flash_strength(0.0)
 	var speed_ratio := clampf(Vector2(velocity.x, velocity.z).length() / MOVE_SPEED, 0.0, 1.0)
 	var breath := sin(_visual_time * 2.6) * 0.018
 	var crawl := sin(_visual_time * 10.0) * speed_ratio
@@ -199,8 +324,7 @@ func _process(delta: float) -> void:
 		target_scale = Vector3(0.93, 1.13, 0.93)
 	if _landing_pulse > 0.0:
 		target_scale = Vector3(1.12, 0.80, 1.12)
-	if _hit_pulse > 0.0:
-		target_scale = Vector3(1.18, 0.78, 1.18)
+
 	if _action == &"sticky_spit" and _phase == &"preparation":
 		target_scale = Vector3(1.12, 0.90, 1.12)
 	elif _action == &"slime_spikes" and _phase == &"preparation":
@@ -209,24 +333,69 @@ func _process(delta: float) -> void:
 		target_scale = Vector3(0.93, 1.08, 0.93)
 	if _absorb_elapsed > 0.0:
 		target_scale += Vector3(0.035, -0.025, 0.035) * sin(_visual_time * 13.0)
+	var charge_squeeze := smoothstep(0.0, 1.0, get_jump_charge_ratio())
+	if _jump_charging and not _is_compressed:
+		target_scale += Vector3(0.040, -0.100, 0.040) * charge_squeeze
+	target_scale += Vector3(0.04, -0.05, 0.04) * hit_pose
+	if _is_compressed:
+		target_scale = Vector3(minf(target_scale.x, 1.02), minf(target_scale.y, 0.58), minf(target_scale.z, 1.02))
 	# The strike reads through weight transfer and lean; the cube itself stays nearly rigid.
 	target_scale += Vector3(0.025, -0.030, 0.018) * whip_windup
 	target_scale += Vector3(-0.015, 0.012, 0.025) * whip_strike
 	visual_root.scale = visual_root.scale.lerp(target_scale, minf(1.0, delta * (24.0 if _action == &"slime_whip" else 12.0)))
-	var pose_blend := minf(1.0, delta * 28.0)
+	var pose_blend := minf(1.0, delta * (42.0 if _hit_pulse > 0.0 else 28.0))
 	var side_sign := -1.0 if _whip_variant == SlimeWhipVisual.VARIANT_LEFT else (0.0 if _whip_variant == SlimeWhipVisual.VARIANT_OVERHEAD else 1.0)
 	var overhead := _whip_variant == SlimeWhipVisual.VARIANT_OVERHEAD
 	var pose_offset := Vector3(side_sign * (0.075 * whip_windup - 0.095 * whip_strike), (-0.035 if overhead else -0.020) * whip_windup + (0.012 if overhead else 0.0) * whip_strike, (0.085 if overhead else 0.070) * whip_windup - (0.140 if overhead else 0.120) * whip_strike - 0.035 * whip_recoil)
-	visual_root.position = visual_root.position.lerp(_visual_rest_position + pose_offset, pose_blend)
-	visual_root.rotation.x = lerpf(visual_root.rotation.x, (0.14 if overhead else 0.10) * whip_windup - (0.22 if overhead else 0.18) * whip_strike - 0.035 * whip_recoil, pose_blend)
+	pose_offset += _hit_local_direction * (0.16 * hit_pose) + Vector3(0.0, -0.03 * hit_pose, 0.0)
+	var rest_position := _visual_rest_position
+	if _is_compressed:
+		rest_position.y = COMPRESSED_COLLISION_CENTER_Y
+	elif _jump_charging:
+		rest_position.y -= 0.045 * charge_squeeze
+	visual_root.position = visual_root.position.lerp(rest_position + pose_offset, pose_blend)
+	visual_root.rotation.x = lerpf(visual_root.rotation.x, (0.14 if overhead else 0.10) * whip_windup - (0.22 if overhead else 0.18) * whip_strike - 0.035 * whip_recoil + _hit_local_direction.z * 0.19 * hit_pose, pose_blend)
 	var local_velocity := global_basis.inverse() * velocity
 	var sway := (crawl * 0.055 - local_velocity.x * 0.012) * walk_visual_strength
-	if _hit_pulse > 0.0:
-		sway += sin(_visual_time * 44.0) * 0.12
-	visual_root.rotation.z = lerpf(visual_root.rotation.z, sway + side_sign * (0.14 * whip_windup - 0.17 * whip_strike - 0.035 * whip_recoil), pose_blend if _action == &"slime_whip" else minf(1.0, delta * 8.0))
+
+	visual_root.rotation.z = lerpf(visual_root.rotation.z, sway + side_sign * (0.14 * whip_windup - 0.17 * whip_strike - 0.035 * whip_recoil) - _hit_local_direction.x * 0.19 * hit_pose, pose_blend if _action == &"slime_whip" or _hit_pulse > 0.0 else minf(1.0, delta * 8.0))
 	if is_instance_valid(_shell_visual) and _shell_visual.visible:
-		_shell_visual.scale = Vector3.ONE * (1.0 + 0.04 * sin(_visual_time * 11.0))
+		_shell_visual.scale = Vector3(1.0, 0.35 if _is_compressed else 1.0, 1.0) * (1.0 + 0.04 * sin(_visual_time * 11.0))
+	_shell_visual.position.y = COMPRESSED_COLLISION_CENTER_Y if _is_compressed else 0.70
 	_whip_visual.set_phase(_phase if _action == &"slime_whip" else &"", _phase_left, _whip_variant)
+
+
+func _create_ground_trail() -> void:
+	_ground_trail = SlimeGroundTrail.new()
+	_ground_trail.name = "GroundTrail"
+	_ground_trail.setup(self)
+	add_child(_ground_trail)
+
+
+func _create_hit_flash() -> void:
+	_hit_flash_light = OmniLight3D.new()
+	_hit_flash_light.name = "HitFlash"
+	_hit_flash_light.light_color = Color(1.0, 0.60, 0.50)
+	_hit_flash_light.omni_range = 1.2
+	_hit_flash_light.omni_attenuation = 2.0
+	_hit_flash_light.position = Vector3(0.0, 0.10, 0.42)
+	visual_root.add_child(_hit_flash_light)
+	_set_hit_flash_strength(0.0)
+
+
+func _set_hit_flash_strength(strength: float) -> void:
+	_hit_flash_light.light_energy = 1.5 * strength
+	_hit_flash_light.visible = strength > 0.001
+
+func _start_hit_reaction(incoming_direction: Vector3 = Vector3.ZERO) -> void:
+	var horizontal := Vector3(incoming_direction.x, 0.0, incoming_direction.z)
+	if horizontal.length_squared() < 0.001:
+		horizontal = global_basis.z
+	_hit_local_direction = global_basis.inverse() * horizontal.normalized()
+	_hit_local_direction.y = 0.0
+	_hit_local_direction = _hit_local_direction.normalized()
+	_hit_pulse = HIT_REACTION_SECONDS
+	_set_hit_flash_strength(1.0)
 
 
 func is_alive() -> bool:
@@ -235,6 +404,10 @@ func is_alive() -> bool:
 
 func clear_action_buffer() -> void:
 	_buffered_action = &""
+	_jump_buffer_left = 0.0
+	_jump_charging = false
+	_jump_charge_seconds = 0.0
+	_jump_impulse_pending = 0.0
 
 
 func _request_slot_action(slot: int) -> void:
@@ -290,7 +463,7 @@ func request_action(action_id: StringName) -> bool:
 	_cast_sequence += 1
 	_cast_key = "%d:%d:%s" % [get_instance_id(), _cast_sequence, action_id]
 	_action_aim_point = _get_camera_aim_point()
-	_action_direction = _action_aim_point - (global_position + Vector3(0.0, 0.65, 0.0))
+	_action_direction = _action_aim_point - (global_position + Vector3(0.0, _combat_origin_height(), 0.0))
 	_action_direction.y = 0.0
 	_action_direction = _action_direction.normalized()
 	if _action_direction.length_squared() < 0.01:
@@ -346,13 +519,17 @@ func _advance_action(delta: float) -> void:
 			request_action(next_action)
 
 
+func _combat_origin_height() -> float:
+	return 0.30 if _is_compressed else 0.65
+
+
 func _do_whip_hit() -> void:
-	var origin := global_position + Vector3(0.0, 0.65, 0.0)
+	var origin := global_position + Vector3(0.0, _combat_origin_height(), 0.0)
 	for enemy: Node in get_tree().get_nodes_in_group(&"enemies") + get_tree().get_nodes_in_group(&"training_targets"):
 		if not is_instance_valid(enemy) or not enemy is Node3D or not enemy.has_method("receive_hit"):
 			continue
 		var target := enemy as Node3D
-		var target_point := target.global_position + Vector3(0.0, 0.7, 0.0)
+		var target_point := target.global_position + Vector3(0.0, 0.30 if _is_compressed else 0.7, 0.0)
 		var horizontal := target_point - origin
 		horizontal.y = 0.0
 		if horizontal.length() > WHIP_RANGE or horizontal.length_squared() < 0.001:
@@ -378,7 +555,7 @@ func _get_camera_aim_point() -> Vector3:
 
 
 func _release_spit() -> void:
-	var origin := global_position + Vector3(0.0, 0.65, 0.0) + _action_direction * 0.5
+	var origin := global_position + Vector3(0.0, _combat_origin_height(), 0.0) + _action_direction * 0.5
 	var direction := (_action_aim_point - origin).normalized()
 	if direction.length_squared() < 0.9:
 		direction = _action_direction
@@ -389,7 +566,7 @@ func cooldown_remaining(ability_id: StringName) -> float:
 	return float(_cooldowns.get(ability_id, 0.0))
 
 
-func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:
+func receive_hit(amount: int, cast_key: String, source_team: StringName, incoming_direction: Vector3 = Vector3.ZERO) -> bool:
 	if health <= 0 or source_team != &"enemy" or amount <= 0 or cast_key.is_empty() or _hurt_protection_left > 0.0:
 		return false
 	if _received_casts.has(cast_key):
@@ -405,19 +582,12 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool
 			return true
 	health = maxi(0, health - amount)
 	_hurt_protection_left = HURT_PROTECTION
-	_hit_pulse = 0.15
+	_start_hit_reaction(incoming_direction)
 	cancel_absorb()
 	damaged.emit()
 	health_changed.emit(health, MAX_HEALTH)
 	if health == 0:
-		_action = &""
-		_phase = &""
-		_buffered_action = &""
-		_whip_visual.visible = false
-		_shell_visual.visible = false
-		visual_root.scale = Vector3(1.24, 0.56, 1.24)
-		visual_root.rotation.z = 0.35
-		died.emit()
+		_finish_death()
 	return true
 
 
@@ -425,20 +595,25 @@ func apply_environment_damage(amount: int) -> void:
 	if health <= 0 or amount <= 0:
 		return
 	health = maxi(0, health - amount)
-	_hit_pulse = 0.15
+	_start_hit_reaction()
 	cancel_absorb()
 	damaged.emit()
 	health_changed.emit(health, MAX_HEALTH)
 	if health == 0:
-		_action = &""
-		_phase = &""
-		_buffered_action = &""
-		_whip_visual.visible = false
-		_shell_visual.visible = false
-		visual_root.scale = Vector3(1.24, 0.56, 1.24)
-		visual_root.rotation.z = 0.35
-		died.emit()
+		_finish_death()
 
+
+func _finish_death() -> void:
+	_action = &""
+	_phase = &""
+	_phase_left = 0.0
+	clear_action_buffer()
+	_whip_visual.visible = false
+	_shell_visual.visible = false
+	_set_hit_flash_strength(0.0)
+	visual_root.scale = Vector3(1.24, 0.56, 1.24)
+	visual_root.rotation.z = 0.35
+	died.emit()
 
 func grant_ability(ability_id: StringName) -> bool:
 	if not KNOWN_ABILITIES.has(ability_id) or learned_abilities.has(ability_id):
@@ -558,58 +733,6 @@ func _find_absorb_source() -> Node3D:
 
 func get_nearest_absorb_source() -> Node3D:
 	return _find_absorb_source()
-
-
-func _build_slime_visual() -> void:
-	var surface := SurfaceTool.new()
-	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var half_size := Vector3(0.45, 0.40, 0.45)
-	var core := half_size - Vector3.ONE * 0.16
-	var faces: Array[Dictionary] = [
-		{"normal": Vector3.BACK, "u": Vector3.RIGHT, "v": Vector3.UP},
-		{"normal": Vector3.FORWARD, "u": Vector3.LEFT, "v": Vector3.UP},
-		{"normal": Vector3.RIGHT, "u": Vector3.FORWARD, "v": Vector3.UP},
-		{"normal": Vector3.LEFT, "u": Vector3.BACK, "v": Vector3.UP},
-		{"normal": Vector3.UP, "u": Vector3.RIGHT, "v": Vector3.FORWARD},
-		{"normal": Vector3.DOWN, "u": Vector3.RIGHT, "v": Vector3.BACK},
-	]
-	for face: Dictionary in faces:
-		var normal: Vector3 = face["normal"]
-		var u_axis: Vector3 = face["u"]
-		var v_axis: Vector3 = face["v"]
-		var normal_extent := normal.abs().dot(half_size)
-		var u_extent := u_axis.abs().dot(half_size)
-		var v_extent := v_axis.abs().dot(half_size)
-		for row in 8:
-			for column in 8:
-				var u0 := (float(column) / 8.0 * 2.0 - 1.0) * u_extent
-				var u1 := (float(column + 1) / 8.0 * 2.0 - 1.0) * u_extent
-				var v0 := (float(row) / 8.0 * 2.0 - 1.0) * v_extent
-				var v1 := (float(row + 1) / 8.0 * 2.0 - 1.0) * v_extent
-				var center := normal * normal_extent
-				var a := center + u_axis * u0 + v_axis * v0
-				var b := center + u_axis * u1 + v_axis * v0
-				var c := center + u_axis * u1 + v_axis * v1
-				var d := center + u_axis * u0 + v_axis * v1
-				_add_rounded_vertex(surface, a, core)
-				_add_rounded_vertex(surface, c, core)
-				_add_rounded_vertex(surface, b, core)
-				_add_rounded_vertex(surface, a, core)
-				_add_rounded_vertex(surface, d, core)
-				_add_rounded_vertex(surface, c, core)
-	body_mesh.mesh = surface.commit()
-
-
-
-func _add_rounded_vertex(surface: SurfaceTool, point: Vector3, core: Vector3) -> void:
-	var nearest := Vector3(
-		clampf(point.x, -core.x, core.x),
-		clampf(point.y, -core.y, core.y),
-		clampf(point.z, -core.z, core.z)
-	)
-	var normal := (point - nearest).normalized()
-	surface.set_normal(normal)
-	surface.add_vertex(nearest + normal * 0.16)
 
 
 func _create_whip_visual() -> void:

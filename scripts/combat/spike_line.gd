@@ -82,7 +82,8 @@ func _hit_targets(center: Vector3) -> void:
 			continue
 		var sticky := team == &"player" and target.has_method("get_sticky_time_left") and float(target.call("get_sticky_time_left")) > 0.0
 		var hit_damage := 33 if sticky else damage
-		if target.call("receive_hit", hit_damage, cast_key, team):
+		var did_hit := (target as SlimeController).receive_hit(hit_damage, cast_key, team, (target.global_position - _origin).normalized()) if target is SlimeController else bool(target.call("receive_hit", hit_damage, cast_key, team))
+		if did_hit:
 			_affected[target.get_instance_id()] = true
 			if sticky and is_instance_valid(target) and target.has_method("clear_sticky"):
 				target.call("clear_sticky")

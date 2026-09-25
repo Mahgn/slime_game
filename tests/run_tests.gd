@@ -252,15 +252,17 @@ func _jump_and_repeat_in_air() -> String:
 	var grounded := player.is_on_floor()
 	Input.action_press(&"jump")
 	await _physics_steps(1)
-	var first_velocity := player.velocity.y
 	Input.action_release(&"jump")
+	await _physics_steps(1)
+	var first_velocity := player.velocity.y
 	await _physics_steps(9)
 	var before_repeat := player.velocity.y
 	var in_air := not player.is_on_floor()
 	Input.action_press(&"jump")
 	await _physics_steps(1)
-	var after_repeat := player.velocity.y
 	Input.action_release(&"jump")
+	await _physics_steps(1)
+	var after_repeat := player.velocity.y
 	await _physics_steps(55)
 	var landed := player.is_on_floor()
 	await _discard_fixture(fixture)
@@ -288,8 +290,9 @@ func _edge_jump(delay_ticks: int) -> Dictionary:
 	await _physics_steps(delay_ticks)
 	Input.action_press(&"jump")
 	await _physics_steps(1)
-	var jump_velocity := player.velocity.y
 	Input.action_release(&"jump")
+	await _physics_steps(1)
+	var jump_velocity := player.velocity.y
 	await _discard_fixture(fixture)
 	print("T03 ledge: delay=%d ticks, left=%s, jump vy=%.3f" % [delay_ticks, str(left_edge), jump_velocity])
 	return {"left_edge": left_edge, "jump_velocity": jump_velocity}

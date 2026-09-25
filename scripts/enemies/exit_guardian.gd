@@ -147,9 +147,9 @@ func _strike() -> void:
 	var distance := delta.length()
 	if _attack_index == 1:
 		if distance <= 2.65 and distance > 0.01 and _locked_direction.dot(delta.normalized()) >= 0.50 and _has_line_of_sight():
-			player_target.receive_hit(16, cast_key, &"enemy")
+			player_target.receive_hit(16, cast_key, &"enemy", delta)
 	elif distance <= 3.0 and player_target.global_position.y - global_position.y <= 0.45 and _has_line_of_sight():
-		player_target.receive_hit(20, cast_key, &"enemy")
+		player_target.receive_hit(20, cast_key, &"enemy", delta)
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:

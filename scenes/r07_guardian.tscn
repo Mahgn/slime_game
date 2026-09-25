@@ -10,4 +10,4 @@ room_mode = "r07"
 
 [node name="SlimePlayer" parent="." instance=ExtResource("2_player")]
 process_mode = 1
-position = Vector3(0, 0.05, 6.8)
+position = Vector3(0, 0.05, 4.5)

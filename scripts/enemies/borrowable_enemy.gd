@@ -126,7 +126,7 @@ func _attack() -> void:
 		var offset := player_target.global_position - global_position
 		offset.y = 0.0
 		if offset.length() <= 2.1 and _locked_direction.dot(offset.normalized()) >= 0.35 and _has_line_of_sight():
-			player_target.receive_hit(12, cast_key, &"enemy")
+			player_target.receive_hit(12, cast_key, &"enemy", player_target.global_position - global_position)
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:
