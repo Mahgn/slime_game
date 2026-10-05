@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101820">
+  <title>Карта подземелья Слизи</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="isometric.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◕</span>
+        <div>
+          <div class="eyebrow">Проектирование мира</div>
+          <h1>Карта подземелья Слизи</h1>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="save-state" class="save-state" role="status">Загрузка…</span>
+        <button id="export-button" type="button">Скачать JSON</button>
+        <button id="import-button" type="button">Загрузить JSON</button>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="floors-panel" aria-label="Этажи">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Маршрут наверх</span>
+            <h2>Этажи</h2>
+          </div>
+          <button id="add-floor-button" class="icon-button" type="button" title="Добавить этаж" aria-label="Добавить этаж">＋</button>
+        </div>
+        <button id="overview-button" class="overview-nav" type="button" aria-current="false"><span class="overview-nav-icon" aria-hidden="true">▥</span><span><strong>Всё подземелье</strong><small>Разрез и путь наверх</small></span></button>
+        <div id="floor-list" class="floor-list"></div>
+        <div class="duration-box">
+          <div><span>Этажи</span><strong id="floor-total">—</strong></div>
+          <div><span>Переходы и финал</span><strong id="interlude-total">—</strong></div>
+          <div class="duration-total"><span>Вся игра</span><strong id="game-total">—</strong></div>
+          <small>Цель первого прохождения: 4–6 часов. Время комнат — гипотеза для тестов.</small>
+        </div>
+      </aside>
+
+      <main class="map-panel">
+        <div class="map-toolbar">
+          <div class="map-title">
+            <span id="floor-kicker" class="eyebrow">Этаж 1</span>
+            <h2 id="floor-title">Приёмное отделение</h2>
+            <p id="floor-goal"></p>
+          </div>
+          <div id="floor-actions" class="map-actions">
+            <div class="view-switch" role="group" aria-label="Вид этажа"><button id="iso-view-button" type="button" aria-pressed="true">Диорама</button><button id="plan-view-button" type="button" aria-pressed="false">План</button></div>
+            <button id="update-first-floor-button" type="button" hidden>Обновить первый этаж</button>
+            <button id="add-room-button" class="primary-button" type="button">＋ Комната</button>
+            <button id="fit-button" type="button" title="Показать все комнаты">Вписать</button>
+            <button id="zoom-out-button" class="icon-button" type="button" aria-label="Уменьшить масштаб">−</button>
+            <span id="zoom-label" class="zoom-label">100%</span>
+            <button id="zoom-in-button" class="icon-button" type="button" aria-label="Увеличить масштаб">＋</button>
+          </div>
+        </div>
+        <div id="overview-viewport" class="overview-viewport" aria-label="Разрез всего подземелья" hidden>
+          <div id="overview-map" class="overview-map"></div>
+        </div>
+        <div id="iso-viewport" class="iso-viewport" aria-label="Изометрическая схема выбранного этажа">
+          <svg id="iso-svg" class="iso-svg" viewBox="-520 -260 1040 720" role="img" aria-label="Изометрическая схема этажа"><g id="iso-scene"></g></svg>
+          <div id="iso-note" class="iso-note">Первый этаж · пространственный эскиз</div>
+          <div class="map-hint">Нажмите комнату для заметок · перетаскивайте площадки · двигайте пустое поле</div>
+        </div>
+        <div id="map-viewport" class="map-viewport" aria-label="Схема выбранного этажа" hidden>
+          <div id="map-world" class="map-world">
+            <svg id="map-lines" class="map-lines" width="2400" height="1600" viewBox="0 0 2400 1600" aria-hidden="true">
+              <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" /></marker></defs>
+              <g id="line-layer"></g>
+            </svg>
+            <div id="room-layer"></div>
+          </div>
+          <div class="map-hint">Перетаскивайте комнаты · тяните пустое поле · колесо мыши меняет масштаб</div>
+          <div class="map-ascent" aria-hidden="true">↑ к поверхности</div>
+        </div>
+        <div id="map-footer" class="map-footer">
+          <span id="room-count">0 комнат</span>
+          <span class="legend"><span>↘ вход</span><span>⚔ бой</span><span>◇ задача</span><span>✦ сюжет</span><span>♛ босс</span></span>
+        </div>
+      </main>
+
+      <aside id="inspector" class="inspector" aria-label="Свойства выбранного элемента"></aside>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

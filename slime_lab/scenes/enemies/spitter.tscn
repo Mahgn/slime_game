@@ -1,0 +1,148 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/spitter.gd" id="1_spitter"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.48
+height = 1.35
+
+[sub_resource type="SphereMesh" id="SphereMesh_body"]
+radius = 0.52
+height = 1.04
+
+[sub_resource type="SphereMesh" id="SphereMesh_eye"]
+radius = 0.085
+height = 0.17
+
+[sub_resource type="SphereMesh" id="SphereMesh_charge"]
+radius = 0.16
+height = 0.32
+
+[sub_resource type="SphereMesh" id="SphereMesh_pouch"]
+radius = 0.23
+height = 0.46
+
+[sub_resource type="TorusMesh" id="TorusMesh_warning"]
+inner_radius = 0.45
+outer_radius = 0.55
+ring_segments = 12
+rings = 32
+
+[sub_resource type="SphereMesh" id="SphereMesh_flash"]
+radius = 0.57
+height = 1.14
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_body"]
+albedo_color = Color(0.66, 0.31, 0.42, 1)
+roughness = 0.48
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eye"]
+albedo_color = Color(0.96, 0.96, 0.85, 1)
+roughness = 0.38
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_charge"]
+albedo_color = Color(1, 0.52, 0.11, 1)
+emission_enabled = true
+emission = Color(1, 0.3, 0.04, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pouch"]
+albedo_color = Color(0.88, 0.4, 0.35, 1)
+roughness = 0.52
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mouth"]
+albedo_color = Color(0.22, 0.07, 0.11, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_warning"]
+albedo_color = Color(1, 0.55, 0.1, 0.82)
+transparency = 1
+emission_enabled = true
+emission = Color(1, 0.35, 0.04, 1)
+emission_energy_multiplier = 1.35
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sticky"]
+albedo_color = Color(0.12, 0.95, 0.76, 0.8)
+transparency = 1
+emission_enabled = true
+emission = Color(0.1, 0.65, 0.51, 1)
+emission_energy_multiplier = 0.8
+
+[node name="Spitter" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 3
+script = ExtResource("1_spitter")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.675, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+position = Vector3(0, 0.68, 0)
+
+[node name="GroundWarning" type="MeshInstance3D" parent="."]
+visible = false
+position = Vector3(0, 0.035, 0)
+mesh = SubResource("TorusMesh_warning")
+surface_material_override/0 = SubResource("StandardMaterial3D_warning")
+
+[node name="Body" type="MeshInstance3D" parent="VisualRoot"]
+mesh = SubResource("SphereMesh_body")
+surface_material_override/0 = SubResource("StandardMaterial3D_body")
+
+[node name="LeftEye" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(-0.18, 0.08, -0.48)
+mesh = SubResource("SphereMesh_eye")
+surface_material_override/0 = SubResource("StandardMaterial3D_eye")
+
+[node name="RightEye" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(0.18, 0.08, -0.48)
+mesh = SubResource("SphereMesh_eye")
+surface_material_override/0 = SubResource("StandardMaterial3D_eye")
+
+[node name="LeftPouch" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(-0.37, -0.13, -0.34)
+mesh = SubResource("SphereMesh_pouch")
+surface_material_override/0 = SubResource("StandardMaterial3D_pouch")
+
+[node name="RightPouch" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(0.37, -0.13, -0.34)
+mesh = SubResource("SphereMesh_pouch")
+surface_material_override/0 = SubResource("StandardMaterial3D_pouch")
+
+[node name="Mouth" type="MeshInstance3D" parent="VisualRoot"]
+position = Vector3(0, -0.23, -0.5)
+scale = Vector3(1.25, 1.0, 0.6)
+mesh = SubResource("SphereMesh_eye")
+surface_material_override/0 = SubResource("StandardMaterial3D_mouth")
+
+[node name="Muzzle" type="Marker3D" parent="VisualRoot"]
+position = Vector3(0, -0.06, -0.56)
+
+[node name="Charge" type="MeshInstance3D" parent="VisualRoot/Muzzle"]
+visible = false
+mesh = SubResource("SphereMesh_charge")
+surface_material_override/0 = SubResource("StandardMaterial3D_charge")
+
+[node name="ChargeRing" type="MeshInstance3D" parent="VisualRoot/Muzzle"]
+visible = false
+rotation = Vector3(1.570796, 0, 0)
+mesh = SubResource("TorusMesh_warning")
+surface_material_override/0 = SubResource("StandardMaterial3D_warning")
+
+[node name="FireFlash" type="MeshInstance3D" parent="VisualRoot/Muzzle"]
+visible = false
+mesh = SubResource("SphereMesh_charge")
+surface_material_override/0 = SubResource("StandardMaterial3D_charge")
+
+[node name="StickyMarker" type="MeshInstance3D" parent="VisualRoot"]
+visible = false
+position = Vector3(0, 0.73, 0)
+scale = Vector3(0.4, 0.4, 0.4)
+mesh = SubResource("SphereMesh_charge")
+surface_material_override/0 = SubResource("StandardMaterial3D_sticky")
+
+[node name="HitFlash" type="MeshInstance3D" parent="VisualRoot"]
+visible = false
+mesh = SubResource("SphereMesh_flash")
+surface_material_override/0 = SubResource("StandardMaterial3D_charge")

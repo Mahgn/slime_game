@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AbilityDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/abilities/ability_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+ability_id = &"elastic_shell"
+display_name = "Упругий панцирь"
+description = "Поглощает до 25 урона одного удара"
+player_cooldown = 6.0
+enemy_damage = 12
+enemy_windup = 0.65
+enemy_recovery = 1.0

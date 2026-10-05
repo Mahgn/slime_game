@@ -52,7 +52,7 @@ var _progress: ProgressBar
 var _collection_panel: ColorRect
 var _collection_cards: Array[Button] = []
 var _collection_slots: Array[Button] = []
-var _pause_panel: ColorRect
+var _pause_panel: SlimePauseMenu
 var _end_panel: ColorRect
 var _end_title: Label
 var _continue_button: Button
@@ -144,8 +144,8 @@ func _input(event: InputEvent) -> void:
 		if _collection_open:
 			_close_collection()
 		elif _underlying_pause:
-			_underlying_pause = false
-			_update_pause_state()
+			if not _pause_panel.dismiss_submenu():
+				_resume_from_pause()
 		else:
 			_underlying_pause = true
 			player.cancel_absorb_for_pause()
@@ -438,12 +438,20 @@ func _play_audio(stream: AudioStream, at: Vector3) -> void:
 	var voice := AudioStreamPlayer3D.new()
 	voice.process_mode = Node.PROCESS_MODE_PAUSABLE
 	voice.stream = stream
+	voice.bus = SlimeGameSettings.EFFECTS_BUS
 	voice.unit_size = 4.0
 	add_child(voice)
 	voice.global_position = at
 	voice.finished.connect(voice.queue_free)
 	voice.play()
 
+
+func _exit_tree() -> void:
+	for child in get_children():
+		if child is AudioStreamPlayer3D:
+			var voice := child as AudioStreamPlayer3D
+			voice.stop()
+			voice.stream = null
 
 func _try_open_collection() -> void:
 	if _safe_left > 0.0 or not get_tree().get_nodes_in_group(&"enemies").is_empty() or not get_tree().get_nodes_in_group(&"enemy_projectiles").is_empty() or not get_tree().get_nodes_in_group(&"enemy_attacks").is_empty():
@@ -462,6 +470,11 @@ func _close_collection() -> void:
 	_card_panel.visible = _card_left > 0.0
 	_update_pause_state()
 
+
+func _resume_from_pause() -> void:
+	_underlying_pause = false
+	_pause_panel.reset_submenus()
+	_update_pause_state()
 
 func _update_pause_state() -> void:
 	get_tree().paused = _underlying_pause or _collection_open
@@ -513,6 +526,7 @@ func _on_player_damaged() -> void:
 
 
 func _show_end(title: String) -> void:
+	SpitterVisual.finish_on_result(self)
 	_end_title.text = title
 	_end_panel.visible = true
 	if is_instance_valid(_continue_button):
@@ -797,8 +811,12 @@ func _create_hud() -> void:
 	_card_label.position = Vector2(12, 10)
 	_card_label.size = Vector2(476, 68)
 	_card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_pause_panel = _overlay(root, "ПАУЗА\nEscape — продолжить")
+	_pause_panel = SlimePauseMenu.new()
+	_pause_panel.name = "PauseMenu"
+	_pause_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pause_panel.visible = false
+	_pause_panel.resume_requested.connect(_resume_from_pause)
+	root.add_child(_pause_panel)
 	_collection_panel = _overlay(root, "КОЛЛЕКЦИЯ\nВыбери слот, затем изученный навык")
 	_collection_panel.visible = false
 	var box := VBoxContainer.new()

@@ -106,6 +106,7 @@ var _spring_rest_length := 0.0
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_to_group(&"player")
 	floor_snap_length = 0.20
 	floor_max_angle = deg_to_rad(45.0)
@@ -128,9 +129,11 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		camera_yaw.rotation.y -= event.screen_relative.x * MOUSE_SENSITIVITY
+		var sensitivity := MOUSE_SENSITIVITY * SlimeGameSettings.current().mouse_sensitivity_scale
+		camera_yaw.rotation.y -= event.screen_relative.x * sensitivity
+		var vertical_direction := -1.0 if SlimeGameSettings.current().invert_y else 1.0
 		_camera_pitch_desired = clampf(
-			_camera_pitch_desired - event.screen_relative.y * MOUSE_SENSITIVITY,
+			_camera_pitch_desired - event.screen_relative.y * sensitivity * vertical_direction,
 			deg_to_rad(-65.0),
 			deg_to_rad(20.0)
 		)
@@ -291,10 +294,17 @@ func _follow_camera_heading(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	if health <= 0:
+		camera.rotation.z = 0.0
 		return
 	_visual_time += delta
 	_landing_pulse = maxf(0.0, _landing_pulse - delta)
 	_hit_pulse = maxf(0.0, _hit_pulse - delta)
+	var hit_fraction := _hit_pulse / HIT_REACTION_SECONDS
+	var landing_fraction := _landing_pulse / 0.14
+	camera.rotation.z = SlimeGameSettings.current().camera_shake * (
+		0.014 * hit_fraction * sin(_visual_time * 28.0)
+		+ 0.006 * landing_fraction * sin(_visual_time * 22.0)
+	)
 	var hit_pose := 0.0
 	if _hit_pulse > 0.0:
 		var hit_progress := 1.0 - _hit_pulse / HIT_REACTION_SECONDS

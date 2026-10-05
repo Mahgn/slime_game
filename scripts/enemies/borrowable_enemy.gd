@@ -6,6 +6,7 @@ signal phase_changed(source: BorrowableEnemy, phase: StringName)
 signal spikes_requested(source: BorrowableEnemy, origin: Vector3, direction: Vector3, cast_key: String)
 
 const GRAVITY := 20.0
+const ARMORER_VISUAL_SCRIPT = preload("res://scripts/enemies/armorer_visual.gd")
 
 @export_enum("armorer", "sprout") var kind := "armorer"
 var player_target: SlimeController
@@ -27,6 +28,7 @@ var _shield: MeshInstance3D
 var _hit_flash: MeshInstance3D
 var _hit_flash_left := 0.0
 var _cracks: Array[MeshInstance3D] = []
+var _armorer_visual: ArmorerVisual
 
 
 func _ready() -> void:
@@ -136,7 +138,10 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool
 	if _shield_raised:
 		amount = maxi(0, amount - 25)
 		_shield_raised = false
-		_shield.visible = false
+		if is_instance_valid(_armorer_visual):
+			_armorer_visual.consume_guard()
+		else:
+			_shield.visible = false
 	if amount > 0:
 		health = maxi(0, health - amount)
 		_hit_flash_left = 0.14
@@ -178,10 +183,13 @@ func _set_phase(next_phase: StringName, seconds: float) -> void:
 	_phase_left = seconds
 	_aim_locked = false
 	_shield_raised = next_phase == &"shell"
-	_shield.visible = _shield_raised
-	_warning.visible = next_phase == &"windup" or next_phase == &"shell"
-	for crack in _cracks:
-		crack.visible = next_phase == &"windup"
+	if is_instance_valid(_armorer_visual):
+		_armorer_visual.set_phase(next_phase)
+	else:
+		_shield.visible = _shield_raised
+		_warning.visible = next_phase == &"windup" or next_phase == &"shell"
+		for crack in _cracks:
+			crack.visible = next_phase == &"windup"
 	phase_changed.emit(self, get_attack_phase())
 
 
@@ -197,12 +205,20 @@ func _die() -> void:
 
 func _process(delta: float) -> void:
 	_hit_flash_left = maxf(0.0, _hit_flash_left - delta)
+	if is_instance_valid(_armorer_visual):
+		_armorer_visual.animate(delta, velocity, _hit_flash_left > 0.0)
+		return
 	_hit_flash.visible = _hit_flash_left > 0.0
 	if _warning.visible:
 		_warning.scale = Vector3.ONE * (1.0 + 0.12 * sin(Time.get_ticks_msec() * 0.02))
 
 
 func _build_visual() -> void:
+	if kind == "armorer":
+		_armorer_visual = ARMORER_VISUAL_SCRIPT.new() as ArmorerVisual
+		_armorer_visual.name = "ArmorerVisual"
+		add_child(_armorer_visual)
+		return
 	var root := Node3D.new()
 	root.position.y = 0.7
 	root.name = "VisualRoot"

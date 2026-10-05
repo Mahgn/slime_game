@@ -2,3 +2,9 @@
 output/
 build/
 *.log
+
+# Supplied macOS archive metadata and nested project caches
+__MACOSX/
+slime_lab/.godot/
+slime_lab/output/
+slime_lab/.DS_Store

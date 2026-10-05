@@ -16,6 +16,7 @@ const ENEMY_SPIT_SOUND = preload("res://assets/audio/enemy_spit.wav")
 @onready var player: SlimeController = $SlimePlayer
 
 var _pause_overlay: CanvasLayer
+var _pause_menu: SlimePauseMenu
 var first_enemy: Spitter
 var second_enemy: Spitter
 var first_source: AbsorbSource
@@ -75,7 +76,8 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"pause") and not (event is InputEventKey and event.echo):
 		if get_tree().paused:
-			_resume_game()
+			if not _pause_menu.dismiss_submenu():
+				_resume_game()
 		else:
 			_pause_game()
 		get_viewport().set_input_as_handled()
@@ -96,6 +98,7 @@ func _pause_game() -> void:
 
 
 func _resume_game() -> void:
+	_pause_menu.reset_submenus()
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if is_instance_valid(_pause_overlay):
@@ -105,19 +108,14 @@ func _resume_game() -> void:
 func _create_pause_overlay() -> void:
 	_pause_overlay = CanvasLayer.new()
 	_pause_overlay.name = "PauseOverlay"
+	_pause_overlay.layer = 10
 	_pause_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pause_overlay.visible = false
-	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.04, 0.07, 0.78)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_pause_overlay.add_child(shade)
-	var message := Label.new()
-	message.text = "ПАУЗА\nEscape — продолжить"
-	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	message.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	message.add_theme_font_size_override("font_size", 28)
-	shade.add_child(message)
+	_pause_menu = SlimePauseMenu.new()
+	_pause_menu.name = "PauseMenu"
+	_pause_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_pause_menu.resume_requested.connect(_resume_game)
+	_pause_overlay.add_child(_pause_menu)
 	add_child(_pause_overlay)
 
 
@@ -281,6 +279,7 @@ func _complete_run() -> void:
 
 
 func _show_end(title: String) -> void:
+	SpitterVisual.finish_on_result(self)
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_end_title.text = title
@@ -329,6 +328,7 @@ func _make_audio(stream: AudioStream) -> AudioStreamPlayer3D:
 	var player_3d := AudioStreamPlayer3D.new()
 	player_3d.process_mode = Node.PROCESS_MODE_PAUSABLE
 	player_3d.stream = stream
+	player_3d.bus = SlimeGameSettings.EFFECTS_BUS
 	player_3d.unit_size = 3.0
 	add_child(player_3d)
 	return player_3d
@@ -466,7 +466,7 @@ func _create_hud() -> void:
 	exit_button.text = "Выйти"
 	exit_button.custom_minimum_size.y = 46.0
 	_style_button(exit_button)
-	exit_button.pressed.connect(func() -> void: get_tree().quit())
+	exit_button.pressed.connect(func() -> void: SlimeGameSettings.current().request_quit())
 	end_box.add_child(exit_button)
 
 

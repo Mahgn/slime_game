@@ -7,6 +7,8 @@ var _read_result: Dictionary
 var _message: Label
 var _continue_button: Button
 var _confirm_panel: PanelContainer
+var _main_panel: PanelContainer
+var _settings_panel: SlimeSettingsPanel
 
 
 func _ready() -> void:
@@ -19,24 +21,43 @@ func _ready() -> void:
 	_refresh_message()
 
 
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		if is_instance_valid(_settings_panel) and _settings_panel.visible:
+			_settings_panel.close_and_save()
+		elif is_instance_valid(_confirm_panel) and _confirm_panel.visible:
+			_confirm_panel.visible = false
+		get_viewport().set_input_as_handled()
+
+
+func _show_settings() -> void:
+	_main_panel.visible = false
+	_settings_panel.visible = true
+
+
+func _close_settings() -> void:
+	_settings_panel.visible = false
+	_main_panel.visible = true
+
+
 func _build_ui() -> void:
 	var background := ColorRect.new()
 	background.color = Color(0.045, 0.09, 0.12)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
-	var panel := PanelContainer.new()
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -270
-	panel.offset_right = 270
-	panel.offset_top = -225
-	panel.offset_bottom = 225
-	add_child(panel)
+	_main_panel = PanelContainer.new()
+	_main_panel.anchor_left = 0.5
+	_main_panel.anchor_right = 0.5
+	_main_panel.anchor_top = 0.5
+	_main_panel.anchor_bottom = 0.5
+	_main_panel.offset_left = -270
+	_main_panel.offset_right = 270
+	_main_panel.offset_top = -280
+	_main_panel.offset_bottom = 280
+	add_child(_main_panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 15)
-	panel.add_child(box)
+	_main_panel.add_child(box)
 	var title := Label.new()
 	title.text = "СЛАЙМ: ПУТЬ НАВЕРХ"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -53,8 +74,16 @@ func _build_ui() -> void:
 	_continue_button.pressed.connect(_continue_game)
 	var new_button := _button(box, "Начать заново")
 	new_button.pressed.connect(_request_new_game)
+	var floor_button := _button(box, "Первый этаж · маршрут коллеги")
+	floor_button.name = "FirstFloorButton"
+	floor_button.pressed.connect(_open_first_floor)
+	var workshop_button := _button(box, "Лаборатория внешности")
+	workshop_button.name = "LabWorkshopButton"
+	workshop_button.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/art_review/lab_workshop.tscn"))
+	var settings_button := _button(box, "Настройки")
+	settings_button.pressed.connect(_show_settings)
 	var exit_button := _button(box, "Выход")
-	exit_button.pressed.connect(func() -> void: get_tree().quit())
+	exit_button.pressed.connect(func() -> void: SlimeGameSettings.current().request_quit())
 	_confirm_panel = PanelContainer.new()
 	_confirm_panel.visible = false
 	_confirm_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -73,6 +102,12 @@ func _build_ui() -> void:
 	accept.pressed.connect(_start_new_game)
 	var cancel := _button(confirm_box, "Отмена")
 	cancel.pressed.connect(func() -> void: _confirm_panel.visible = false)
+	_settings_panel = SlimeSettingsPanel.new()
+	_settings_panel.name = "SettingsPanel"
+	_settings_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_settings_panel.visible = false
+	_settings_panel.closed.connect(_close_settings)
+	add_child(_settings_panel)
 
 
 func _button(parent: Control, label: String) -> Button:
@@ -135,3 +170,13 @@ func _enter_room(room_id: String) -> void:
 	if result != OK:
 		get_tree().remove_meta(&"checkpoint_active")
 		_message.text = "Не удалось открыть зал: %d" % result
+
+
+func _open_first_floor() -> void:
+	if get_tree().has_meta(&"first_floor_restart_state"):
+		get_tree().remove_meta(&"first_floor_restart_state")
+	if get_tree().has_meta(&"checkpoint_active"):
+		get_tree().remove_meta(&"checkpoint_active")
+	var result := get_tree().change_scene_to_file("res://scenes/levels/first_floor.tscn")
+	if result != OK:
+		_message.text = "Не удалось открыть первый этаж: %d" % result

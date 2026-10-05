@@ -16,16 +16,14 @@ const MAX_SHOT_RANGE := 18.0
 
 enum Phase { IDLE, WINDUP, RECOVERY, DEAD }
 
-@onready var body_visual: MeshInstance3D = $VisualRoot/Body
+@onready var model: SpitterVisual = $VisualRoot/Model
+@onready var body_visual: MeshInstance3D = $VisualRoot/Model/Rig/Body
 @onready var muzzle: Marker3D = $VisualRoot/Muzzle
 @onready var charge: MeshInstance3D = $VisualRoot/Muzzle/Charge
 @onready var charge_ring: MeshInstance3D = $VisualRoot/Muzzle/ChargeRing
 @onready var fire_flash: MeshInstance3D = $VisualRoot/Muzzle/FireFlash
 @onready var ground_warning: MeshInstance3D = $GroundWarning
-@onready var left_pouch: MeshInstance3D = $VisualRoot/LeftPouch
-@onready var right_pouch: MeshInstance3D = $VisualRoot/RightPouch
-@onready var sticky_marker: MeshInstance3D = $VisualRoot/StickyMarker
-@onready var hit_flash: MeshInstance3D = $VisualRoot/HitFlash
+@onready var sticky_marker: SlimeStickyMark = $VisualRoot/StickyMarker
 
 var player_target: Node3D
 var attack_permission: Callable
@@ -38,7 +36,6 @@ var _shot_count := 0
 var _hit_casts: Dictionary = {}
 var _sticky_left := 0.0
 var _sticky_factor := 1.0
-var _hit_flash_left := 0.0
 var _fire_flash_left := 0.0
 
 
@@ -50,7 +47,6 @@ func _ready() -> void:
 	fire_flash.visible = false
 	ground_warning.visible = false
 	sticky_marker.visible = false
-	hit_flash.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -93,27 +89,19 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	if _phase == Phase.DEAD:
 		return
-	_hit_flash_left = maxf(0.0, _hit_flash_left - delta)
 	_fire_flash_left = maxf(0.0, _fire_flash_left - delta)
-	hit_flash.visible = _hit_flash_left > 0.0
 	fire_flash.visible = _fire_flash_left > 0.0
 	if fire_flash.visible:
-		fire_flash.scale = Vector3.ONE * (0.7 + _fire_flash_left / 0.12 * 1.8)
-	var target_scale := Vector3.ONE
-	var pouch_swell := 0.0
+		fire_flash.scale = Vector3(0.34, 0.27, 0.70) * (_fire_flash_left / 0.12)
+	var progress := 0.0
 	if _phase == Phase.WINDUP:
-		var progress: float = clampf(1.0 - _phase_left / PROFILE.enemy_windup, 0.0, 1.0)
-		target_scale = Vector3(1.0 + progress * 0.20, 1.0 + progress * 0.32, 1.0 + progress * 0.20)
-		pouch_swell = progress
-		charge.scale = Vector3.ONE * (0.8 + progress * 1.8)
-		charge_ring.scale = Vector3.ONE * (1.35 - progress * 0.52)
+		progress = clampf(1.0 - _phase_left / PROFILE.enemy_windup, 0.0, 1.0)
+		charge.scale = Vector3(0.22, 0.31, 0.15) * (0.40 + progress * 0.60)
 		ground_warning.scale = Vector3.ONE * (1.0 + progress * 0.65)
-	body_visual.scale = body_visual.scale.lerp(target_scale, minf(1.0, delta * 12.0))
-	var pouch_scale := Vector3(1.0 + pouch_swell * 0.34, 1.0 + pouch_swell * 0.32, 1.0 + pouch_swell * 0.55)
-	left_pouch.scale = left_pouch.scale.lerp(pouch_scale, minf(1.0, delta * 16.0))
-	right_pouch.scale = right_pouch.scale.lerp(pouch_scale, minf(1.0, delta * 16.0))
+	elif _phase == Phase.RECOVERY:
+		progress = clampf(1.0 - _phase_left / PROFILE.enemy_recovery, 0.0, 1.0)
+	model.animate(delta, global_basis.inverse() * velocity, get_attack_phase(), progress)
 	sticky_marker.visible = _sticky_left > 0.0
-	sticky_marker.rotation.y += delta * 2.0
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:
@@ -123,7 +111,7 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool
 		return false
 	_hit_casts[cast_key] = true
 	health = maxi(0, health - amount)
-	_hit_flash_left = 0.12
+	model.play_hurt()
 	if health == 0:
 		_die()
 	return true
@@ -134,7 +122,16 @@ func apply_sticky(factor: float, seconds: float) -> void:
 		return
 	_sticky_factor = clampf(factor, 0.1, 1.0)
 	_sticky_left = seconds
+	if sticky_marker.mesh == null:
+		set_sticky_impact(body_visual.to_global(Vector3(0.24, 0.07, -0.45)), -body_visual.global_basis.z)
 	sticky_marker.visible = true
+
+
+func set_sticky_impact(hit_position: Vector3, hit_normal: Vector3) -> void:
+	if _phase == Phase.DEAD:
+		return
+	sticky_marker.place_on_hit(hit_position, hit_normal, self, true)
+	sticky_marker.visible = _sticky_left > 0.0
 
 
 func current_move_speed() -> float:
@@ -245,12 +242,14 @@ func _set_phase(next_phase: Phase, duration: float) -> void:
 	_phase_left = duration
 	_aim_locked = false
 	charge.visible = next_phase == Phase.WINDUP
-	charge_ring.visible = next_phase == Phase.WINDUP
+	charge_ring.visible = false
 	ground_warning.visible = next_phase == Phase.WINDUP
 	phase_changed.emit(self, get_attack_phase())
 
 
 func _die() -> void:
+	if _phase == Phase.DEAD:
+		return
 	_phase = Phase.DEAD
 	charge.visible = false
 	charge_ring.visible = false
@@ -258,8 +257,15 @@ func _die() -> void:
 	fire_flash.visible = false
 	sticky_marker.visible = false
 	collision_layer = 0
+	collision_mask = 0
+	velocity = Vector3.ZERO
+	remove_from_group(&"enemies")
 	set_physics_process(false)
 	set_process(false)
+	# Keep only the pausable art in the room; the combat actor dies immediately.
+	# Room teardown owns and removes these remains, including during the animation.
+	model.reparent(get_parent(), true)
+	model.play_death(global_position)
 	phase_changed.emit(self, &"dead")
 	died.emit(self, PROFILE.ability_id, global_position)
 	queue_free()

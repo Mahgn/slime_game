@@ -175,6 +175,8 @@ func refresh_contact(phase: StringName, remaining: float, variant: int, exclude_
 			_activate_impact(candidate)
 	if not _latched_contact.is_empty() and (phase == &"active" or phase == &"recovery"):
 		_update_surface_lay(exclude_rid, pose, phase)
+		if phase == &"active":
+			_lay_age = minf(0.055, _lay_age + get_physics_process_delta_time())
 	else:
 		_lay_offsets.clear()
 	_previous_pose = pose
@@ -187,7 +189,7 @@ func _update_surface_lay(exclude_rid: RID, live_pose: Dictionary, phase: StringN
 	_lay_offsets.clear()
 	if _latched_pose.is_empty() or _latched_contact.is_empty():
 		return
-	var collider: Object = _latched_contact.get("collider")
+	var collider: Variant = _latched_contact.get("collider")
 	if not is_instance_valid(collider):
 		return
 	var hit_t: float = _latched_contact["clip_t"]
@@ -200,7 +202,8 @@ func _update_surface_lay(exclude_rid: RID, live_pose: Dictionary, phase: StringN
 		var next_world: Vector3 = world_transform * _point_on_pose(curve_t, _latched_pose)
 		remaining_length += previous_world.distance_to(next_world)
 		previous_world = next_world
-	var lay_length := minf(LAY_MAX_LENGTH, remaining_length * 0.8) * smoothstep(0.08, 0.43, remaining_length)
+	var tip_scale := 1.0 - smoothstep(0.72, 0.90, hit_t)
+	var lay_length := minf(LAY_MAX_LENGTH, remaining_length * 0.8) * smoothstep(0.08, 0.43, remaining_length) * tip_scale
 	if lay_length < 0.012:
 		return
 	var normal: Vector3 = (_latched_contact["normal"] as Vector3).normalized()
@@ -279,7 +282,7 @@ func _surface_lay_center(candidate: Vector3, normal: Vector3, hit_point: Vector3
 func _push_clear_of_contact(world_center: Vector3, world_radius: float) -> Vector3:
 	if _latched_contact.is_empty():
 		return world_center
-	var collider: Object = _latched_contact.get("collider")
+	var collider: Variant = _latched_contact.get("collider")
 	if not is_instance_valid(collider):
 		return world_center
 	var normal: Vector3 = (_latched_contact["normal"] as Vector3).normalized()
@@ -574,8 +577,6 @@ func _process(delta: float) -> void:
 	# The body moves in render time; keep the splash aligned with the contact.
 	if _previous_phase == &"active" and not _latched_contact.is_empty():
 		_place_impact(_latched_contact)
-	if _previous_phase == &"active" and not _latched_contact.is_empty():
-		_lay_age = minf(0.055, _lay_age + delta)
 	if _impact_age >= IMPACT_SECONDS:
 		return
 	_impact_age = minf(IMPACT_SECONDS, _impact_age + delta)

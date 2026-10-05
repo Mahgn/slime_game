@@ -8,7 +8,7 @@ const STORE_SCRIPT = preload("res://scripts/progression/checkpoint_store.gd")
 
 var _transitioning := false
 var _save_retry_left := 0.0
-var _pause_panel: ColorRect
+var _pause_panel: SlimePauseMenu
 var _hint: Label
 
 
@@ -17,6 +17,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().paused = false
 	_build_room()
 	_build_light()
@@ -26,17 +27,32 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"pause") and not (event is InputEventKey and event.echo):
-		get_tree().paused = not get_tree().paused
-		_pause_panel.visible = get_tree().paused
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if get_tree().paused else Input.MOUSE_MODE_CAPTURED
+		if get_tree().paused:
+			if not _pause_panel.dismiss_submenu():
+				_resume_game()
+		else:
+			_pause_game()
 		get_viewport().set_input_as_handled()
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and is_node_ready() and not get_tree().paused:
-		get_tree().paused = true
-		_pause_panel.visible = true
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_pause_game()
+
+
+func _pause_game() -> void:
+	player.cancel_absorb_for_pause()
+	player.clear_action_buffer()
+	get_tree().paused = true
+	_pause_panel.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _resume_game() -> void:
+	_pause_panel.reset_submenus()
+	_pause_panel.visible = false
+	get_tree().paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _physics_process(delta: float) -> void:
@@ -170,17 +186,9 @@ func _build_hud() -> void:
 	marker.add_theme_font_size_override("font_size", 25)
 	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(marker)
-	_pause_panel = ColorRect.new()
-	_pause_panel.color = Color(0.02, 0.04, 0.07, 0.82)
+	_pause_panel = SlimePauseMenu.new()
+	_pause_panel.name = "PauseMenu"
 	_pause_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_pause_panel.visible = false
-	_pause_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pause_panel.resume_requested.connect(_resume_game)
 	layer.add_child(_pause_panel)
-	var pause_text := Label.new()
-	pause_text.text = "ПАУЗА\nEscape — продолжить"
-	pause_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	pause_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	pause_text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pause_text.add_theme_font_size_override("font_size", 30)
-	pause_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pause_panel.add_child(pause_text)

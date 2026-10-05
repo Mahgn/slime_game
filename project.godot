@@ -6,6 +6,10 @@ config/name="Слайм: путь наверх"
 run/main_scene="res://scenes/launch.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
+[autoload]
+
+GameSettings="*res://scripts/settings/game_settings.gd"
+
 [display]
 
 window/size/viewport_width=1280

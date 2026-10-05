@@ -1,0 +1,4 @@
+.godot/
+output/*
+!output/.gdignore
+*.log

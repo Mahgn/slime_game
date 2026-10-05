@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f7f2"><title>Путь Слизи</title><link rel="stylesheet" href="styles.css"><script src="app.js" defer></script></head>
+<body>
+<header class="topbar">
+<h1>Путь Слизи</h1><span id="save-state" role="status">Подключение…</span><div class="spacer"></div>
+<div class="history-controls"><button id="undo" title="Отменить · Ctrl+Z" aria-label="Отменить"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-5 5 5 5M4 10h9a6 6 0 0 1 6 6v3"/></svg></button><button id="redo" title="Повторить · Ctrl+Shift+Z" aria-label="Повторить"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 5 5-5 5m5-5h-9a6 6 0 0 0-6 6v3"/></svg></button></div>
+<button id="connect" aria-pressed="false">Связать</button><button id="add-node" class="primary">Добавить этап</button>
+<details class="file-menu"><summary>Меню</summary><div class="menu-content"><button id="edit-project">Название истории</button><button id="export">Скачать JSON</button><button id="import">Загрузить JSON</button><button id="help">Как работать</button><div class="search-group"><label for="search">Поиск по истории</label><input id="search" type="search" placeholder="Событие или место"><div id="search-results"></div></div></div></details>
+</header>
+<div id="notice" class="notice" role="alert" hidden></div>
+<nav class="chapter-strip" aria-label="Главы истории"><button id="overview" class="active">Весь путь<span id="total-count" hidden></span></button><div id="chapters"></div></nav>
+<div class="workspace"><main class="map-panel">
+<div id="viewport" tabindex="0" aria-label="Карта пути героя. Перетаскивайте этапы или пустое поле."><div id="world"><div id="lanes"></div><svg id="edges" aria-label="Переходы между этапами"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"/></marker></defs><g id="edge-layer"></g></svg><div id="nodes"></div></div><div id="empty" hidden>Добавьте первый этап истории.</div></div>
+<div id="outline" hidden></div>
+<div class="canvas-controls"><div class="view-switch"><button id="map-view" aria-pressed="true">Карта</button><button id="list-view" aria-pressed="false">Список</button></div><div class="zoom-controls"><button id="fit">Весь экран</button><button id="zoom-out" aria-label="Уменьшить масштаб">−</button><output id="zoom">100%</output><button id="zoom-in" aria-label="Увеличить масштаб">+</button></div></div>
+<footer><span id="map-hint">Нажмите этап для подробностей. Перетаскивайте, чтобы перестроить карту.</span><span id="map-stats"></span></footer>
+</main><aside id="inspector" aria-label="Редактор выбранного этапа"></aside></div>
+<section id="chapter-popover" aria-label="Действия с главой" hidden></section>
+<dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Закрыть справку">Закрыть</button></form><h2>Как работать с картой</h2><ol><li><strong>Нажмите этап.</strong> Справа можно изменить место, действие и развитие героя. Остальные поля — в разделе «Ещё детали».</li><li><strong>Перетащите карточку.</strong> Перенос в соседнюю колонку меняет главу. Стрелки сохраняются, пока вы их не измените.</li><li><strong>Связать → начало → конец.</strong> Нажмите стрелку, чтобы изменить направление или условие. Несколько выходов создают развилку.</li><li><strong>Нажмите заголовок главы на карте.</strong> Её область выделится, а рядом появятся название, описание и действия: переставить, удалить, добавить этап или следующую главу.</li><li><strong>Ctrl+Z / Ctrl+Shift+Z.</strong> Отменить / повторить. Внутри поля работают обычные сочетания редактирования текста.</li></ol><p>Карта автоматически сохраняется в <code>planning/hero-journey/journey.json</code>. Codex редактирует тот же файл. При одновременных правках редактор предложит выбрать версию.</p><p>Через меню можно скачать или загрузить JSON. Перед записью создаётся резервная копия. Карта не меняет саму игру.</p></dialog>
+<dialog id="delete-chapter-dialog" aria-labelledby="delete-chapter-heading">
+<h2 id="delete-chapter-heading">Удалить главу?</h2><p id="delete-chapter-summary"></p>
+<div class="field" id="delete-chapter-options"><label for="delete-chapter-mode">Что сделать с этапами</label><select id="delete-chapter-mode"><option value="move">Перенести в другую главу</option><option value="delete">Удалить вместе с главой</option></select></div>
+<div class="field" id="delete-chapter-destination"><label for="delete-chapter-target">Перенести в главу</label><select id="delete-chapter-target"></select></div>
+<p id="delete-chapter-consequence"></p><small>Действие можно отменить целиком.</small>
+<div class="dialog-actions"><button id="cancel-delete-chapter">Отмена</button><button id="confirm-delete-chapter" class="danger">Удалить главу</button></div>
+</dialog>
+<input id="import-file" type="file" accept=".json,application/json" hidden><div id="toast" role="status" aria-live="polite"></div>
+</body></html>
