@@ -44,6 +44,16 @@ func setup(player: SlimeController) -> void:
 	_player = player
 
 
+func clear_for_room_change() -> void:
+	_samples.clear()
+	_splashes.clear()
+	_support_cache.clear()
+	_age = 0.0
+	_last_draw_age = -1.0
+	_needs_break = true
+	_draw_effect()
+
+
 func _ready() -> void:
 	top_level = true
 	global_transform = Transform3D.IDENTITY

@@ -1,7 +1,6 @@
 extends SceneTree
 
 const PLAYER_SCENE := preload("res://scenes/player/slime_player.tscn")
-const MOVEMENT_PREVIEW_SCENE := preload("res://scenes/art_review/slime_movement_preview.tscn")
 const INPUT_SETUP := preload("res://scripts/input_setup.gd")
 
 var _failed := 0
@@ -21,7 +20,6 @@ func _run() -> void:
 	root.add_child(_watchdog)
 	_watchdog.timeout.connect(_on_timeout)
 	_watchdog.start()
-	_report("M06_ROOF_ZONE", await _test_roof_zone())
 	_report("M01_LOW_PASSAGE", await _test_low_passage())
 	_report("M02_CHARGED_JUMP", await _test_jump_heights())
 	_report("M03_AIR_REPRESS", await _test_no_air_charge())
@@ -74,11 +72,13 @@ func _test_low_passage() -> String:
 	var rest_camera_distance := player.spring_arm.spring_length
 	var rest_pitch := player.camera_pitch.rotation.x
 	Input.action_press(&"move_forward")
+	Input.action_press(&"move_right")
 	var entry_ticks := 0
 	while player.global_position.z > -4.5 and entry_ticks < 140:
 		await _physics_steps(1)
 		entry_ticks += 1
 	Input.action_release(&"move_forward")
+	Input.action_release(&"move_right")
 	await _physics_steps(8)
 	var inside_z := player.global_position.z
 	var through_roof := inside_z < -4.5 and player.is_on_floor()
@@ -100,11 +100,13 @@ func _test_low_passage() -> String:
 	await _physics_steps(1)
 	var blocked_jump := player.is_compressed() and player.is_on_floor() and player.velocity.y < 0.5
 	Input.action_press(&"move_forward")
+	Input.action_press(&"move_right")
 	var exit_ticks := 0
 	while player.global_position.z > -7.5 and exit_ticks < 90:
 		await _physics_steps(1)
 		exit_ticks += 1
 	Input.action_release(&"move_forward")
+	Input.action_release(&"move_right")
 	await _physics_steps(20)
 	var beyond_roof := player.global_position.z < -7.5 and player.is_on_floor()
 	var restored := not player.is_compressed()
@@ -135,66 +137,6 @@ func _test_low_passage() -> String:
 		return "camera height, distance, or pitch did not return after tunnel"
 	if jump_after_exit < 5.0:
 		return "ordinary jump did not return after leaving the passage"
-	return ""
-
-func _test_roof_zone() -> String:
-	_release_actions()
-	var preview := MOVEMENT_PREVIEW_SCENE.instantiate() as Node3D
-	root.add_child(preview)
-	var player := preview.get_node("SlimePlayer") as SlimeController
-	var roof := preview.get_node("TunnelRoof") as StaticBody3D
-	var roof_box := (roof.get_child(0) as CollisionShape3D).shape as BoxShape3D
-	var roof_top := roof.global_position.y + roof_box.size.y * 0.5
-	var roof_front := roof.global_position.z + roof_box.size.z * 0.5
-	var roof_back := roof.global_position.z - roof_box.size.z * 0.5
-	player.velocity = Vector3.ZERO
-	player.global_position = Vector3(roof.global_position.x, roof_top + 0.07, roof.global_position.z)
-	await _physics_steps(24)
-	var landed_on_roof := player.is_on_floor() and absf(player.global_position.y - roof_top) < 0.08
-	var compressed_on_roof := player.is_compressed()
-	var roof_player_y := player.global_position.y
-	player.velocity = Vector3.ZERO
-	player.global_position = Vector3(roof.global_position.x + 1.90, 0.05, roof.global_position.z)
-	await _physics_steps(16)
-	var side_on_floor := player.is_on_floor()
-	var compressed_beside_wall := player.is_compressed()
-
-	# Start outside the front sensor and cross the physical tunnel to its far side.
-	player.velocity = Vector3.ZERO
-	player.global_position = Vector3(roof.global_position.x, 0.05, roof_front + 2.2)
-	await _physics_steps(12)
-	var reset_before_entry := player.is_on_floor() and not player.is_compressed()
-	Input.action_press(&"move_forward")
-	var front_ticks := 0
-	var compressed_under_roof := false
-	while player.global_position.z > roof_back - 1.65 and front_ticks < 180:
-		await _physics_steps(1)
-		front_ticks += 1
-		if player.global_position.z < roof.global_position.z and player.global_position.z > roof_back + 0.4 and player.is_compressed() and player.is_on_floor():
-			compressed_under_roof = true
-	Input.action_release(&"move_forward")
-	await _physics_steps(16)
-	var crossed_and_stood := player.global_position.z < roof_back - 1.65 and player.is_on_floor() and not player.is_compressed()
-
-	# Re-enter from the far side to catch directional and stale Area3D state.
-	Input.action_press(&"move_back")
-	var back_ticks := 0
-	while player.global_position.z < roof.global_position.z and back_ticks < 130:
-		await _physics_steps(1)
-		back_ticks += 1
-	Input.action_release(&"move_back")
-	await _physics_steps(5)
-	var compressed_on_return := player.global_position.z >= roof.global_position.z and player.is_on_floor() and player.is_compressed()
-	print("M06 roof: top=%.3f player_y=%.3f landed=%s compressed=%s; side_floor=%s side_compressed=%s; outside_reset=%s under=%s crossed=%s return=%s ticks=%d/%d" % [roof_top, roof_player_y, str(landed_on_roof), str(compressed_on_roof), str(side_on_floor), str(compressed_beside_wall), str(reset_before_entry), str(compressed_under_roof), str(crossed_and_stood), str(compressed_on_return), front_ticks, back_ticks])
-	await _discard_fixture(preview)
-	if not landed_on_roof:
-		return "player did not physically land on the tunnel roof"
-	if compressed_on_roof:
-		return "roof sensor compressed the player standing on top of the low obstacle"
-	if not side_on_floor or compressed_beside_wall:
-		return "sensor compressed the player beside the outside wall"
-	if not reset_before_entry or not compressed_under_roof or not crossed_and_stood or not compressed_on_return:
-		return "under-roof traversal or reverse entry regressed"
 	return ""
 
 func _test_jump_heights() -> String:

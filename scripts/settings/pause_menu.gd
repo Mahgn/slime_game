@@ -89,7 +89,7 @@ func _build_ui() -> void:
 	_confirm.add_child(box)
 
 	var warning := Label.new()
-	warning.text = "Выйти в меню?\nТекущая комната начнётся заново от сохранённого входа."
+	warning.text = "Выйти в меню?\nТекущий сеанс будет завершён."
 	warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	warning.add_theme_font_size_override("font_size", 22)

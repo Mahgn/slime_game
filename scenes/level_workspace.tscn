@@ -1,0 +1,48 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/level_workspace.gd" id="1_workspace"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="2_player"]
+
+[sub_resource type="Environment" id="Environment_workspace"]
+background_mode = 1
+background_color = Color(0.035, 0.044, 0.056, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.72, 0.8, 0.88, 1)
+ambient_light_energy = 0.65
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.22, 0.25, 0.27, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="Mesh_floor"]
+material = SubResource("Material_floor")
+size = Vector3(12, 0.5, 12)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(12, 0.5, 12)
+
+[node name="LevelWorkspace" type="Node3D"]
+script = ExtResource("1_workspace")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_workspace")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.95, -0.55, 0)
+light_color = Color(1, 0.92, 0.8, 1)
+light_energy = 1.3
+shadow_enabled = true
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.25, 0)
+collision_layer = 1
+collision_mask = 2
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("Mesh_floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("Shape_floor")
+
+[node name="SlimePlayer" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0.05, 0)

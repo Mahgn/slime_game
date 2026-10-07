@@ -179,15 +179,8 @@ func update_saved_loadout(room_id: String, player: SlimeController) -> bool:
 	return write_checkpoint(snapshot)["ok"]
 
 
-func scene_path(room_id: String) -> String:
-	match room_id:
-		"R01": return "res://scenes/r01_entrance.tscn"
-		"R02": return "res://scenes/main.tscn"
-		"R03": return "res://scenes/r03_armorer.tscn"
-		"R04": return "res://scenes/r04_core_trial.tscn"
-		"R05": return "res://scenes/r05_mixed.tscn"
-		"R06": return "res://scenes/r06_press.tscn"
-		"R07": return "res://scenes/r07_guardian.tscn"
+func scene_path(_room_id: String) -> String:
+	# Preserve old snapshot validation without loading removed campaign scenes.
 	return ""
 
 

@@ -2,7 +2,7 @@ extends SceneTree
 
 
 const PLAYER_SCENE := preload("res://scenes/player/slime_player.tscn")
-const ART_SCENE := preload("res://scenes/art_review/slime_model_preview_v5.tscn")
+const FIXTURE_SCENE := preload("res://tests/helpers/combat_fixture.tscn")
 const ENEMY_SCENE := preload("res://scenes/enemies/spitter.tscn")
 const INPUT_SETUP := preload("res://scripts/input_setup.gd")
 const WALL_FRONT_Z := -0.75
@@ -36,7 +36,7 @@ func _run() -> void:
 	for variant in range(SlimeWhipVisual.VARIANT_COUNT):
 		_report("W07 wall mark variant %d" % variant, await _wall_mark_lifecycle(variant))
 	_report("W08 no wall mark on enemy or miss", await _no_wall_mark_without_wall())
-	_report("W09 art preview nested whip wall mark", await _art_preview_wall_mark())
+	_report("W09 combat fixture nested whip wall mark", await _art_preview_wall_mark())
 	print("WHIP_CONTACT_SUMMARY: %d failed" % _failures)
 	quit(1 if _failures > 0 else 0)
 
@@ -358,31 +358,23 @@ func _wall_marks(fixture: Node) -> Array[Node]:
 	return marks
 
 func _art_preview_wall_mark() -> String:
-	var art := ART_SCENE.instantiate() as Node3D
+	var art := FIXTURE_SCENE.instantiate() as Node3D
 	root.add_child(art)
 	var player := art.get_node_or_null("SlimePlayer") as SlimeController
 	if player == null:
 		await _discard_art_fixture(art)
-		return "art preview has no SlimePlayer"
+		return "combat fixture has no SlimePlayer"
 	var visual := player.get_node_or_null("VisualRoot/SlimeHeroModelV5/SlimeWhip") as SlimeWhipVisual
 	if visual == null:
 		await _discard_art_fixture(art)
-		return "art preview did not reparent SlimeWhip under SlimeHeroModelV5"
-	# The full preview Main plays a real-time WAV on action_started. W09 only
-	# exercises the visual hierarchy, so leave the model callback but omit audio.
-	var sound_callback := Callable(art, "_on_action_started")
-	if player.action_started.is_connected(sound_callback):
-		player.action_started.disconnect(sound_callback)
-	var first_enemy := art.get("first_enemy") as Spitter
-	if is_instance_valid(first_enemy):
-		first_enemy.queue_free()
+		return "combat fixture did not reparent SlimeWhip under SlimeHeroModelV5"
 	var front_z := player.global_position.z + WALL_FRONT_Z
 	var wall := _add_wall(art, front_z)
 	await _physics_steps(5)
 	_force_variant(player, SlimeWhipVisual.VARIANT_RIGHT)
 	if not player.request_action(&"slime_whip"):
 		await _discard_art_fixture(art)
-		return "art preview whip did not start"
+		return "combat fixture whip did not start"
 	var hit := {}
 	var trace := PackedStringArray()
 	var peak_marks := 0
@@ -558,6 +550,7 @@ func _get_whip(player: SlimeController) -> SlimeWhipVisual:
 
 
 func _force_variant(player: SlimeController, variant: int) -> void:
+	(player as SlimeIsometricController).pointer = player.camera.unproject_position(player.global_position + Vector3.FORWARD * 3.0 + Vector3.UP * 0.55)
 	player._whip_variants_left.clear()
 	player._whip_variants_left.append(variant)
 

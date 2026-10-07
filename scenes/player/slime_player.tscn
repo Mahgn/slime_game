@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://scripts/player/slime_controller.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/player/slime_isometric_controller.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/player/slime_hero_visual.gd" id="2_visual"]
 [ext_resource type="ArrayMesh" path="res://assets/models/slime_hero_v5.res" id="3_model"]
 

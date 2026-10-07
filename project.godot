@@ -2,7 +2,9 @@ config_version=5
 
 [application]
 
-config/name="Слайм: путь наверх"
+config/name="Слайм: путь наверх · Изометрия"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="slime_ascent_isometric"
 run/main_scene="res://scenes/launch.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

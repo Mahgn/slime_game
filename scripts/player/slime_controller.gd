@@ -165,20 +165,14 @@ func _physics_process(delta: float) -> void:
 	_update_jump_input(delta, was_on_floor)
 
 	var axes := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
-	var move_direction := camera_yaw.global_basis.x * axes.x + camera_yaw.global_basis.z * axes.y
-	move_direction.y = 0.0
-	move_direction = move_direction.normalized()
+	var move_direction := screen_movement_direction(axes)
 	var action_speed := 1.0
 	if _action == &"elastic_shell":
 		action_speed = 0.70
 	elif _action != &"":
 		action_speed = 0.75
 	var target_velocity := move_direction * MOVE_SPEED * action_speed
-	var acceleration := AIR_ACCELERATION
-	if was_on_floor:
-		acceleration = GROUND_ACCELERATION if axes.length_squared() > 0.0 else GROUND_BRAKING
-	velocity.x = move_toward(velocity.x, target_velocity.x, acceleration * delta)
-	velocity.z = move_toward(velocity.z, target_velocity.z, acceleration * delta)
+	_update_horizontal_velocity(target_velocity, axes, was_on_floor, delta)
 
 	if _jump_impulse_pending > 0.0:
 		velocity.y = _jump_impulse_pending
@@ -195,6 +189,20 @@ func _physics_process(delta: float) -> void:
 		_landing_pulse = 0.14
 		_ground_trail.add_landing_splash(impact_speed)
 	_update_absorption(delta)
+
+
+func screen_movement_direction(axes: Vector2) -> Vector3:
+	var direction := camera_yaw.global_basis.x * axes.x + camera_yaw.global_basis.z * axes.y
+	direction.y = 0.0
+	return direction.normalized()
+
+
+func _update_horizontal_velocity(target: Vector3, axes: Vector2, grounded: bool, delta: float) -> void:
+	var acceleration := AIR_ACCELERATION
+	if grounded:
+		acceleration = GROUND_ACCELERATION if axes.length_squared() > 0.0 else GROUND_BRAKING
+	velocity.x = move_toward(velocity.x, target.x, acceleration * delta)
+	velocity.z = move_toward(velocity.z, target.z, acceleration * delta)
 
 
 

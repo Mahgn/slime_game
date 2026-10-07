@@ -1,12 +1,11 @@
 extends Node
 
 const INPUT_SETUP = preload("res://scripts/input_setup.gd")
-const TEST_PATH := "res://output/S5/settings/test_settings.cfg"
+const TEST_PATH := "res://output/level_cleanup/test_settings.cfg"
 const ROOM_CASES := [
-	["R01", "res://scenes/r01_entrance.tscn", "_pause_panel"],
-	["R02", "res://scenes/main.tscn", "_pause_menu"],
-	["R05", "res://scenes/r05_mixed.tscn", "_pause_panel"],
-	["R07", "res://scenes/r07_guardian.tscn", "_pause_panel"],
+	["FIXTURE", "res://tests/helpers/combat_fixture.tscn", "_pause_panel"],
+	["WORKSPACE", "res://scenes/level_workspace.tscn", "_pause_panel"],
+	["OPENING", "res://scenes/opening/opening_route.tscn", "_pause_panel"],
 ]
 
 var _failures := 0
@@ -19,6 +18,7 @@ func _ready() -> void:
 
 func _run() -> void:
 	INPUT_SETUP.install()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(TEST_PATH.get_base_dir()))
 	get_tree().set_meta(&"checkpoint_active", false)
 	_remove_test_file()
 	_report("SETTINGS_DEFAULTS_BUSES", _check_defaults_and_buses())
@@ -27,19 +27,18 @@ func _run() -> void:
 	if DisplayServer.get_name() != "headless":
 		_ambient_status("before_ui", GameSettings.get_node_or_null("CavernAmbience") as AudioStreamPlayer)
 	_report("SETTINGS_UI_PAUSED", await _check_settings_ui())
+	_report("SETTINGS_ISOMETRIC_POINTER", await _check_mouse_input())
 	if DisplayServer.get_name() == "headless":
-		_blocked += 3
-		print("BLOCKED SETTINGS_MOUSE_AIM: headless display cannot capture the mouse")
+		_blocked += 2
 		print("BLOCKED SETTINGS_AMBIENCE_PAUSE: headless display has no audio player")
 		print("BLOCKED SETTINGS_FULLSCREEN: headless display has no window")
 	else:
-		_report("SETTINGS_MOUSE_AIM", await _check_mouse_input())
 		_report("SETTINGS_AMBIENCE_PAUSE", await _check_ambience_pause())
 		_report("SETTINGS_FULLSCREEN", await _check_fullscreen_toggle())
 	for room_case in ROOM_CASES:
 		_report("PAUSE_%s" % room_case[0], await _check_room_pause(room_case))
 	_report("PAUSE_TIMERS", await _check_pause_timers())
-	_report("PAUSE_MENU_ROLLBACK", await _check_menu_return())
+	_report("PAUSE_MENU_RETURN", await _check_menu_return())
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_remove_test_file()
@@ -98,7 +97,6 @@ func _check_save_reload() -> bool:
 		and is_equal_approx(GameSettings.effects_volume, 0.45)
 		and is_equal_approx(GameSettings.ambience_volume, 0.25)
 		and is_equal_approx(GameSettings.mouse_sensitivity_scale, 1.55)
-		and GameSettings.invert_y
 		and is_equal_approx(GameSettings.camera_shake, 0.35)
 	)
 	return (
@@ -142,7 +140,7 @@ func _check_settings_ui() -> bool:
 	menu.call("_open_settings")
 	var panel := menu.get("_settings") as SlimeSettingsPanel
 	var slider := _find_slider(panel, "Эффекты")
-	var checkbox := _find_checkbox(panel, "Инвертировать вертикаль мыши")
+	var checkbox := _find_checkbox(panel, "Полноэкранный режим")
 	var opened := (
 		panel != null
 		and panel.visible
@@ -152,13 +150,11 @@ func _check_settings_ui() -> bool:
 	)
 	if opened:
 		slider.value = 0.55
-		checkbox.button_pressed = true
 	var closed := menu.dismiss_submenu()
 	var saved := ConfigFile.new()
 	var persisted: bool = (
 		saved.load(TEST_PATH) == OK
 		and is_equal_approx(float(saved.get_value("audio", "effects", -1.0)), 0.55)
-		and saved.get_value("controls", "invert_y", false) == true
 	)
 	var state: bool = (
 		closed
@@ -166,7 +162,6 @@ func _check_settings_ui() -> bool:
 		and (menu.get("_main_box") as Control).visible
 		and get_tree().paused
 		and is_equal_approx(GameSettings.effects_volume, 0.55)
-		and GameSettings.invert_y
 		and persisted
 	)
 	menu.queue_free()
@@ -283,43 +278,24 @@ func _check_ambience_pause() -> bool:
 
 
 func _check_mouse_input() -> bool:
-	var player := (load("res://scenes/player/slime_player.tscn") as PackedScene).instantiate() as SlimeController
+	var player := (load("res://scenes/player/slime_player.tscn") as PackedScene).instantiate() as SlimeIsometricController
 	get_tree().root.add_child(player)
 	await get_tree().process_frame
-	GameSettings.set_mouse_sensitivity_scale(1.0)
-	GameSettings.set_invert_y(false)
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	print("MOUSE_MODE=%d DISPLAY=%s" % [Input.mouse_mode, DisplayServer.get_name()])
+	var before := player.camera.global_basis
 	var motion := InputEventMouseMotion.new()
-	motion.screen_relative = Vector2(20.0, 10.0)
-	var yaw_before := player.camera_yaw.rotation.y
-	var pitch_before := float(player.get("_camera_pitch_desired"))
+	motion.position = Vector2(250, 175)
+	motion.relative = Vector2(20, 10)
 	player._input(motion)
-	var normal_yaw := player.camera_yaw.rotation.y - yaw_before
-	var normal_pitch := float(player.get("_camera_pitch_desired")) - pitch_before
-	GameSettings.set_mouse_sensitivity_scale(2.0)
-	GameSettings.set_invert_y(true)
-	yaw_before = player.camera_yaw.rotation.y
-	pitch_before = float(player.get("_camera_pitch_desired"))
-	player._input(motion)
-	var scaled_yaw := player.camera_yaw.rotation.y - yaw_before
-	var inverted_pitch := float(player.get("_camera_pitch_desired")) - pitch_before
-	print("MOUSE_AIM normal=(%.4f, %.4f) scaled_inverted=(%.4f, %.4f)" % [
-		normal_yaw, normal_pitch, scaled_yaw, inverted_pitch
-	])
-	var correct := absf(normal_yaw + 0.05) < 0.001 \
-		and absf(normal_pitch + 0.025) < 0.001 \
-		and absf(scaled_yaw + 0.10) < 0.001 \
-		and absf(inverted_pitch - 0.05) < 0.001
+	var correct := player.pointer == motion.position and player.camera.global_basis.is_equal_approx(before)
+	correct = correct and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	player.queue_free()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	await get_tree().process_frame
 	return correct
 
 
 func _check_pause_timers() -> bool:
 	get_tree().set_meta(&"checkpoint_active", false)
-	var room := (load("res://scenes/r01_entrance.tscn") as PackedScene).instantiate()
+	var room := (load("res://tests/helpers/combat_fixture.tscn") as PackedScene).instantiate()
 	get_tree().root.add_child(room)
 	await get_tree().process_frame
 	var player := room.get_node("SlimePlayer") as SlimeController
@@ -345,7 +321,7 @@ func _check_pause_timers() -> bool:
 
 func _check_menu_return() -> bool:
 	get_tree().set_meta(&"checkpoint_active", true)
-	var room := (load("res://scenes/r01_entrance.tscn") as PackedScene).instantiate()
+	var room := (load("res://tests/helpers/combat_fixture.tscn") as PackedScene).instantiate()
 	get_tree().root.add_child(room)
 	get_tree().current_scene = room
 	await get_tree().process_frame
@@ -417,4 +393,3 @@ func _report(case_name: String, result: bool) -> void:
 	else:
 		_failures += 1
 		print("FAIL " + case_name)
-

@@ -133,17 +133,6 @@ func _run() -> void:
 		await _frames(2)
 		clean_restarts = clean_restarts and not is_instance_valid(art) and get_nodes_in_group(&"spitter_remains").is_empty() and get_nodes_in_group(&"enemies").is_empty()
 	_check("P13_TEN_RESTARTS_MID_DEATH", clean_restarts)
-	var battle := (load("res://scenes/main.tscn") as PackedScene).instantiate()
-	root.add_child(battle)
-	var final_enemy: Spitter = battle.first_enemy
-	var final_art := final_enemy.model
-	final_enemy.receive_hit(30, "result_death", &"player")
-	battle._show_end("Проверка")
-	await _physics(90)
-	_check("P14_RESULT_FINISHES_DEATH", paused and is_instance_valid(final_art) and final_art.animation_state == &"dead" and not final_art.is_processing() and final_art.rig.scale.is_equal_approx(Vector3.ONE))
-	paused = false
-	battle.queue_free()
-	await _frames(4)
 	print("SUMMARY: %d failed" % failures)
 	call_deferred("quit", 0 if failures == 0 else 1)
 
