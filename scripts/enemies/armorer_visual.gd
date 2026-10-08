@@ -1,6 +1,14 @@
 extends Node3D
 class_name ArmorerVisual
 
+# Immutable geometry is shared; materials and animation remain per enemy.
+# Rendering preparation populates this small, bounded set before the first wave.
+static var _plate_meshes: Dictionary = {}
+static var _rim_meshes: Dictionary = {}
+static var _sphere_meshes: Dictionary = {}
+static var _limb_meshes: Dictionary = {}
+static var _warning_mesh: TorusMesh
+
 ## Visual only. The BorrowableEnemy body and its combat phases remain authoritative.
 const SHELL_COLOR := Color(0.35, 0.55, 0.61)
 const SHELL_DARK := Color(0.19, 0.34, 0.40)
@@ -128,12 +136,16 @@ func _build() -> void:
 	var warning_mesh := TorusMesh.new()
 	warning_mesh.inner_radius = 0.60
 	warning_mesh.outer_radius = 0.66
+	if _warning_mesh == null: _warning_mesh = warning_mesh
+	warning_mesh = _warning_mesh
 	_warning = _mesh("Warning", self, warning_mesh, eye_material)
 	_warning.position.y = 0.035
 	_warning.visible = false
 
 
 func _plate_mesh(width: float, half_length: float, color: Color) -> ArrayMesh:
+	var key := [width,half_length,color]
+	if _plate_meshes.has(key): return _plate_meshes[key]
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for row in 4:
@@ -150,10 +162,13 @@ func _plate_mesh(width: float, half_length: float, color: Color) -> ArrayMesh:
 			_triangle(tool, p00, p10, p11, tint)
 			_triangle(tool, p00, p11, p01, tint)
 	tool.generate_normals()
-	return tool.commit()
+	var result := tool.commit()
+	_plate_meshes[key] = result
+	return result
 
 
 func _rim_mesh(width: float) -> ArrayMesh:
+	if _rim_meshes.has(width): return _rim_meshes[width]
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for column in 12:
@@ -166,7 +181,9 @@ func _rim_mesh(width: float) -> ArrayMesh:
 		_triangle(tool, p00, p10, p11, Color.WHITE)
 		_triangle(tool, p00, p11, p01, Color.WHITE)
 	tool.generate_normals()
-	return tool.commit()
+	var result := tool.commit()
+	_rim_meshes[width] = result
+	return result
 
 
 func _plate_point(width: float, half_length: float, t: float, angle: float) -> Vector3:
@@ -187,6 +204,9 @@ func _add_limb(name: String, parent: Node3D, start: Vector3, finish: Vector3, st
 	mesh.bottom_radius = end_radius
 	mesh.height = start.distance_to(finish)
 	mesh.radial_segments = 7
+	var key := Vector3(start_radius,end_radius,mesh.height)
+	if not _limb_meshes.has(key): _limb_meshes[key] = mesh
+	mesh = _limb_meshes[key]
 	var part := _mesh(name, parent, mesh, material)
 	part.position = (start + finish) * 0.5
 	part.quaternion = Quaternion(Vector3.UP, (finish - start).normalized())
@@ -199,6 +219,10 @@ func _ellipsoid(name: String, parent: Node3D, mesh: Mesh, at: Vector3, size: Vec
 
 
 func _mesh(name: String, parent: Node3D, mesh: Mesh, material: Material) -> MeshInstance3D:
+	if mesh is SphereMesh:
+		var key := [mesh.radius,mesh.height,mesh.radial_segments,mesh.rings,mesh.is_hemisphere]
+		if not _sphere_meshes.has(key): _sphere_meshes[key] = mesh
+		mesh = _sphere_meshes[key]
 	var instance := MeshInstance3D.new()
 	instance.name = name
 	instance.mesh = mesh

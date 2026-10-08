@@ -5,6 +5,13 @@ signal resolved(hit_position: Vector3, damaged_target: bool)
 
 const PLAYER_GEL_SHADER := preload("res://assets/shaders/slime_spit_gel.gdshader")
 
+# Immutable shot geometry/materials survive individual projectile lifetimes.
+# This also avoids freeing freshly uploaded buffers during the first impact.
+static var _sphere_meshes: Dictionary = {}
+static var _enemy_materials: Dictionary = {}
+static var _streak_mesh: CapsuleMesh
+static var _blob_mesh: ArrayMesh
+
 class SpitSplash:
 	extends MeshInstance3D
 
@@ -99,6 +106,7 @@ func _create_player_visual(visual: Node3D) -> void:
 
 
 func _make_player_blob_mesh() -> ArrayMesh:
+	if _blob_mesh != null: return _blob_mesh
 	var depths := PackedFloat32Array([-0.32, -0.285, -0.235, -0.16, -0.06, 0.05, 0.16, 0.28, 0.40, 0.52, 0.64, 0.72])
 	var radii := PackedFloat32Array([0.012, 0.085, 0.147, 0.190, 0.205, 0.188, 0.153, 0.111, 0.069, 0.037, 0.019, 0.006])
 	const SEGMENTS := 20
@@ -143,6 +151,7 @@ func _make_player_blob_mesh() -> ArrayMesh:
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_blob_mesh = mesh
 	return mesh
 
 
@@ -176,6 +185,8 @@ func _create_enemy_visual(visual: Node3D) -> void:
 	var streak_mesh := CapsuleMesh.new()
 	streak_mesh.radius = 0.075
 	streak_mesh.height = 0.58
+	if _streak_mesh == null: _streak_mesh = streak_mesh
+	streak_mesh = _streak_mesh
 	streak.mesh = streak_mesh
 	streak.position.z = 0.27
 	streak.rotation.x = PI / 2.0
@@ -185,6 +196,8 @@ func _create_enemy_visual(visual: Node3D) -> void:
 
 
 func _glow_material(color: Color, energy: float, alpha: float = 1.0) -> StandardMaterial3D:
+	var key := [color,energy,alpha]
+	if _enemy_materials.has(key): return _enemy_materials[key]
 	var material := StandardMaterial3D.new()
 	material.albedo_color = Color(color.r, color.g, color.b, alpha)
 	if alpha < 1.0:
@@ -192,6 +205,7 @@ func _glow_material(color: Color, energy: float, alpha: float = 1.0) -> Standard
 	material.emission_enabled = true
 	material.emission = color
 	material.emission_energy_multiplier = energy
+	_enemy_materials[key] = material
 	return material
 
 
@@ -201,6 +215,8 @@ func _add_sphere(visual: Node3D, mesh_name: String, radius: float, offset: Vecto
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
+	if not _sphere_meshes.has(radius): _sphere_meshes[radius] = sphere
+	sphere = _sphere_meshes[radius]
 	part.mesh = sphere
 	part.position = offset
 	part.material_override = material

@@ -180,52 +180,114 @@ func _draw_effect() -> void:
 	var coverage := _build_coverage()
 	if coverage.is_empty():
 		return
-	var cells: Dictionary = {}
-	for grid_key in coverage:
-		var data: Dictionary = coverage[grid_key]
-		if float(data["alpha"]) <= 0.001:
+	# A compact integer grid replaces per-triangle dictionaries and repeated
+	# corner allocations. Coverage, border interpolation and floor clipping stay
+	# identical; only the assembly work changes.
+	var lower := Vector2i(2147483647, 2147483647)
+	var upper := Vector2i(-2147483647, -2147483647)
+	for key: Vector2i in coverage:
+		lower = lower.min(key)
+		upper = upper.max(key)
+	lower -= Vector2i.ONE
+	upper += Vector2i.ONE
+	var columns := upper.x - lower.x + 1
+	var count := columns * (upper.y - lower.y + 1)
+	var known := PackedByteArray()
+	var marked := PackedByteArray()
+	var heights := PackedFloat64Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var cells := PackedInt32Array()
+	known.resize(count)
+	marked.resize(count)
+	heights.resize(count)
+	normals.resize(count)
+	colors.resize(count)
+	var cell_offsets := PackedInt32Array([-columns-1, -1, -columns, 0])
+	for key: Vector2i in coverage:
+		var index := (key.y-lower.y)*columns + key.x-lower.x
+		var data: Dictionary = coverage[key]
+		known[index] = 1
+		heights[index] = float(data.height)
+		normals[index] = data.normal
+		var color: Color = data.color
+		color.a = float(data.alpha)
+		colors[index] = color
+		# Match the original insertion order for border-height interpolation.
+		for offset in cell_offsets:
+			var cell: int = index+offset
+			if marked[cell] == 0:
+				marked[cell] = 1
+				cells.append(cell)
+	for cell in cells:
+		# Interior cells already have all four deposited vertices. Averaging
+		# their plane only to discard it was most of the assembly work.
+		if known[cell] and known[cell+1] and known[cell+columns+1] and known[cell+columns]:
 			continue
-		var key: Vector2i = grid_key
-		for dx in [-1, 0]:
-			for dz in [-1, 0]:
-				cells[Vector2i(key.x + dx, key.y + dz)] = true
-	if cells.is_empty():
-		return
-
-	# Give transparent border vertices one shared height so adjacent cells meet.
-	for cell_key in cells:
-		var cell: Vector2i = cell_key
-		var corners: Array[Vector2i] = [cell, cell + Vector2i(1, 0), cell + Vector2i(1, 1), cell + Vector2i(0, 1)]
+		var corners := PackedInt32Array([cell, cell+1, cell+columns+1, cell+columns])
 		var height := 0.0
 		var normal := Vector3.ZERO
-		var count := 0
+		var neighbors := 0
 		for corner in corners:
-			if coverage.has(corner):
-				var data: Dictionary = coverage[corner]
-				height += float(data["height"])
-				normal += data["normal"] as Vector3
-				count += 1
-		if count == 0:
-			continue
-		height /= float(count)
+			if known[corner] != 0:
+				height += heights[corner]
+				normal += normals[corner]
+				neighbors += 1
+		height /= float(neighbors)
 		normal = normal.normalized()
 		for corner in corners:
-			if not coverage.has(corner):
-				coverage[corner] = {"alpha": 0.0, "height": height, "normal": normal, "color": Color(0.20, 0.78, 0.50)}
-
-
-	# Both the crawl strip and landing splash use this mesh. Check the actual
-	# floor under every grid corner so neither effect can bridge a platform edge.
-	var support: Dictionary = {}
-	var vertex_indices: Dictionary = {}
-	for cell_key in cells:
-		var cell: Vector2i = cell_key
-		var corners: Array[Vector2i] = [cell, cell + Vector2i(1, 0), cell + Vector2i(1, 1), cell + Vector2i(0, 1)]
-		for corner in corners:
-			if not support.has(corner):
-				support[corner] = _surface_support(corner, coverage[corner])
-		_append_supported_triangle(corners[0], corners[1], corners[2], coverage, support, vertex_indices)
-		_append_supported_triangle(corners[0], corners[2], corners[3], coverage, support, vertex_indices)
+			if known[corner] == 0:
+				known[corner] = 1
+				heights[corner] = height
+				normals[corner] = normal
+				colors[corner] = Color(0.20, 0.78, 0.50, 0.0)
+	var vertex_indices := PackedInt32Array()
+	vertex_indices.resize(count)
+	vertex_indices.fill(-1)
+	# Fill local buffers once. Member-array access through the script object
+	# inside every vertex/triangle used to allocate and dispatch repeatedly.
+	var vertices := PackedVector3Array()
+	var vertex_colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	vertices.resize(count)
+	vertex_colors.resize(count)
+	indices.resize(cells.size()*6)
+	var vertex_count := 0
+	var index_count := 0
+	for index in count:
+		if known[index] == 0:
+			continue
+		var key := Vector2i(index % columns, index / columns) + lower
+		var floor := _support_at(key, heights[index], normals[index])
+		if not bool(floor.supported):
+			continue
+		var point := Vector3(float(key.x)*GRID_STEP, float(floor.height), float(key.y)*GRID_STEP)
+		point += (floor.normal as Vector3)*SURFACE_OFFSET
+		vertex_indices[index] = vertex_count
+		vertices[vertex_count] = point
+		vertex_colors[vertex_count] = colors[index]
+		vertex_count += 1
+	for cell in cells:
+		var a := vertex_indices[cell]
+		var b := vertex_indices[cell+1]
+		var c := vertex_indices[cell+columns+1]
+		var d := vertex_indices[cell+columns]
+		if a >= 0 and b >= 0 and c >= 0 and maxf(vertex_colors[a].a,maxf(vertex_colors[b].a,vertex_colors[c].a)) > 0.001:
+			indices[index_count] = a
+			indices[index_count+1] = b
+			indices[index_count+2] = c
+			index_count += 3
+		if a >= 0 and c >= 0 and d >= 0 and maxf(vertex_colors[a].a,maxf(vertex_colors[c].a,vertex_colors[d].a)) > 0.001:
+			indices[index_count] = a
+			indices[index_count+1] = c
+			indices[index_count+2] = d
+			index_count += 3
+	vertices.resize(vertex_count)
+	vertex_colors.resize(vertex_count)
+	indices.resize(index_count)
+	_vertices = vertices
+	_colors = vertex_colors
+	_indices = indices
 	if _indices.is_empty():
 		return
 	var arrays: Array = []
@@ -263,43 +325,64 @@ func _build_coverage() -> Dictionary:
 
 
 func _raster_segment(coverage: Dictionary, start: Dictionary, finish: Dictionary, tail_anchor: float) -> void:
-	var a: Vector3 = start["position"]
-	var b: Vector3 = finish["position"]
-	var a2 := Vector2(a.x, a.z)
-	var b2 := Vector2(b.x, b.z)
-	var direction := b2 - a2
+	# Samples never move after being deposited. Cache their grid intersections,
+	# plane and interpolation once; only taper/opacity depend on the live age.
+	if not finish.has("raster"):
+		finish["raster"] = _segment_grid(start, finish)
+	var raster: Dictionary = finish.raster
+	var keys: Array[Vector2i] = raster.keys_grid
+	var travels: PackedFloat64Array = raster.travels
+	var laterals: PackedFloat64Array = raster.laterals
+	var times: PackedFloat64Array = raster.times
+	var heights: PackedFloat64Array = raster.heights
+	var normals: PackedVector3Array = raster.normals
+	for index in keys.size():
+		var travel := travels[index] - tail_anchor
+		var taper := smoothstep(0.0, TAPER_LENGTH, travel)
+		var radius := WIDTH * 0.5 * taper * (0.95 + 0.05 * sin(travel * 6.2 + 2.0))
+		var edge := 1.0 - smoothstep(maxf(0.0,radius-EDGE_SOFTNESS),radius+EDGE_SOFTNESS,laterals[index])
+		var tip := smoothstep(0.0, 0.24, travel)
+		var fade := clampf((LIFETIME-(_age-times[index]))/TAIL_FADE,0.0,1.0)
+		var alpha := 0.43 * edge * tip * fade
+		if alpha > 0.001:
+			_offer_coverage(coverage,keys[index],alpha,heights[index],normals[index],Color(0.24,0.82,0.53))
+
+
+func _segment_grid(start: Dictionary, finish: Dictionary) -> Dictionary:
+	var keys: Array[Vector2i] = []
+	var travels := PackedFloat64Array()
+	var laterals := PackedFloat64Array()
+	var times := PackedFloat64Array()
+	var heights := PackedFloat64Array()
+	var normals := PackedVector3Array()
+	var raster := {"keys_grid":keys,"travels":travels,"laterals":laterals,"times":times,"heights":heights,"normals":normals}
+	var a: Vector3 = start.position
+	var b: Vector3 = finish.position
+	var a2 := Vector2(a.x,a.z)
+	var direction := Vector2(b.x,b.z)-a2
 	var length_squared := direction.length_squared()
-	if length_squared < 0.0001:
-		return
+	if length_squared < 0.0001: return raster
 	var margin := WIDTH * 0.5 + EDGE_SOFTNESS
-	var min_x := floori((minf(a.x, b.x) - margin) / GRID_STEP)
-	var max_x := ceili((maxf(a.x, b.x) + margin) / GRID_STEP)
-	var min_z := floori((minf(a.z, b.z) - margin) / GRID_STEP)
-	var max_z := ceili((maxf(a.z, b.z) + margin) / GRID_STEP)
-	var first_normal: Vector3 = start["normal"]
-	var last_normal: Vector3 = finish["normal"]
-	for gx in range(min_x, max_x + 1):
-		for gz in range(min_z, max_z + 1):
-			var world := Vector2(float(gx) * GRID_STEP, float(gz) * GRID_STEP)
-			var fraction := (world - a2).dot(direction) / length_squared
-			if fraction < 0.0 or fraction > 1.0:
-				continue
-			var nearest := a2 + direction * fraction
+	var first_normal: Vector3 = start.normal
+	var last_normal: Vector3 = finish.normal
+	for gx in range(floori((minf(a.x,b.x)-margin)/GRID_STEP),ceili((maxf(a.x,b.x)+margin)/GRID_STEP)+1):
+		for gz in range(floori((minf(a.z,b.z)-margin)/GRID_STEP),ceili((maxf(a.z,b.z)+margin)/GRID_STEP)+1):
+			var world := Vector2(float(gx)*GRID_STEP,float(gz)*GRID_STEP)
+			var fraction := (world-a2).dot(direction)/length_squared
+			if fraction < 0.0 or fraction > 1.0: continue
+			var nearest := a2+direction*fraction
 			var lateral := world.distance_to(nearest)
-			var travel := lerpf(float(start["travel"]), float(finish["travel"]), fraction) - tail_anchor
-			var taper := smoothstep(0.0, TAPER_LENGTH, travel)
-			var radius := WIDTH * 0.5 * taper * (0.95 + 0.05 * sin(travel * 6.2 + 2.0))
-			var edge := 1.0 - smoothstep(maxf(0.0, radius - EDGE_SOFTNESS), radius + EDGE_SOFTNESS, lateral)
-			var tip := smoothstep(0.0, 0.24, travel)
-			var stamp_time := lerpf(float(start["time"]), float(finish["time"]), fraction)
-			var fade := clampf((LIFETIME - (_age - stamp_time)) / TAIL_FADE, 0.0, 1.0)
-			var alpha := 0.43 * edge * tip * fade
-			if alpha <= 0.001:
-				continue
-			var normal := first_normal.lerp(last_normal, fraction).normalized()
-			var nearest3 := a.lerp(b, fraction)
-			var height := nearest3.y - (normal.x * (world.x - nearest3.x) + normal.z * (world.y - nearest3.z)) / normal.y
-			_offer_coverage(coverage, Vector2i(gx, gz), alpha, height, normal, Color(0.24, 0.82, 0.53))
+			if lateral > margin: continue
+			var normal := first_normal.lerp(last_normal,fraction).normalized()
+			var nearest3 := a.lerp(b,fraction)
+			keys.append(Vector2i(gx,gz))
+			travels.append(lerpf(float(start.travel),float(finish.travel),fraction))
+			laterals.append(lateral)
+			times.append(lerpf(float(start.time),float(finish.time),fraction))
+			heights.append(nearest3.y-(normal.x*(world.x-nearest3.x)+normal.z*(world.y-nearest3.z))/normal.y)
+			normals.append(normal)
+	# Packed arrays are copy-on-write: publish the completed values.
+	return {"keys_grid":keys,"travels":travels,"laterals":laterals,"times":times,"heights":heights,"normals":normals}
 
 
 func _raster_corner(coverage: Dictionary, sample: Dictionary, tail_anchor: float, incoming: Vector2, outgoing: Vector2) -> void:
@@ -312,24 +395,32 @@ func _raster_corner(coverage: Dictionary, sample: Dictionary, tail_anchor: float
 	var fade := clampf((LIFETIME - (_age - float(sample["time"]))) / TAIL_FADE, 0.0, 1.0)
 	if radius <= 0.001 or fade <= 0.001 or tip <= 0.001:
 		return
-	var margin := radius + EDGE_SOFTNESS
-	var min_x := floori((center.x - margin) / GRID_STEP)
-	var max_x := ceili((center.x + margin) / GRID_STEP)
-	var min_z := floori((center.z - margin) / GRID_STEP)
-	var max_z := ceili((center.z + margin) / GRID_STEP)
-	for gx in range(min_x, max_x + 1):
-		for gz in range(min_z, max_z + 1):
-			var world := Vector2(float(gx) * GRID_STEP, float(gz) * GRID_STEP)
-			var offset := world - Vector2(center.x, center.z)
-			if offset.dot(incoming) <= 0.0 or offset.dot(outgoing) >= 0.0:
-				continue
-			var lateral := offset.length()
-			var edge := 1.0 - smoothstep(maxf(0.0, radius - EDGE_SOFTNESS), radius + EDGE_SOFTNESS, lateral)
-			var alpha := 0.43 * edge * tip * fade
-			if alpha <= 0.001:
-				continue
-			var height := center.y - (normal.x * (world.x - center.x) + normal.z * (world.y - center.z)) / normal.y
-			_offer_coverage(coverage, Vector2i(gx, gz), alpha, height, normal, Color(0.24, 0.82, 0.53))
+	if not sample.has("corner_raster"):
+		var keys: Array[Vector2i]=[]
+		var distances := PackedFloat64Array()
+		var heights := PackedFloat64Array()
+		var margin := WIDTH*0.5+EDGE_SOFTNESS
+		for gx in range(floori((center.x-margin)/GRID_STEP),ceili((center.x+margin)/GRID_STEP)+1):
+			for gz in range(floori((center.z-margin)/GRID_STEP),ceili((center.z+margin)/GRID_STEP)+1):
+				var world := Vector2(float(gx)*GRID_STEP,float(gz)*GRID_STEP)
+				var offset := world-Vector2(center.x,center.z)
+				if offset.dot(incoming) <= 0.0 or offset.dot(outgoing) >= 0.0: continue
+				var lateral := offset.length()
+				if lateral > margin: continue
+				keys.append(Vector2i(gx,gz))
+				distances.append(lateral)
+				heights.append(center.y-(normal.x*(world.x-center.x)+normal.z*(world.y-center.z))/normal.y)
+		sample["corner_raster"]={"keys_grid":keys,"distances":distances,"heights":heights}
+	var raster: Dictionary=sample.corner_raster
+	var keys: Array[Vector2i]=raster.keys_grid
+	var distances: PackedFloat64Array=raster.distances
+	var heights: PackedFloat64Array=raster.heights
+	for index in keys.size():
+		var edge := 1.0-smoothstep(maxf(0.0,radius-EDGE_SOFTNESS),radius+EDGE_SOFTNESS,distances[index])
+		var alpha := 0.43*edge*tip*fade
+		if alpha > 0.001:
+			_offer_coverage(coverage,keys[index],alpha,heights[index],normal,Color(0.24,0.82,0.53))
+
 
 func _raster_splash(coverage: Dictionary, splash: Dictionary) -> void:
 	var elapsed := _age - float(splash["time"])
@@ -337,6 +428,21 @@ func _raster_splash(coverage: Dictionary, splash: Dictionary) -> void:
 	var opacity := 1.0 - smoothstep(0.48, SPLASH_LIFETIME, elapsed)
 	if opacity <= 0.001:
 		return
+	if growth >= 1.0:
+		if not splash.has("settled_coverage"):
+			var deposited: Dictionary = {}
+			_splash_shape(deposited,splash,1.0,1.0)
+			splash["settled_coverage"]=deposited
+		for key: Vector2i in splash.settled_coverage:
+			var data: Dictionary=splash.settled_coverage[key]
+			var alpha := float(data.alpha)*opacity
+			if alpha > 0.001:
+				_offer_coverage(coverage,key,alpha,float(data.height),data.normal,data.color)
+	else:
+		_splash_shape(coverage,splash,growth,opacity)
+
+
+func _splash_shape(coverage: Dictionary,splash: Dictionary,growth: float,opacity: float) -> void:
 	var center: Vector3 = splash["position"]
 	var normal: Vector3 = splash["normal"]
 	var radius := float(splash["radius"]) * growth
@@ -378,15 +484,16 @@ func _raster_blob(coverage: Dictionary, center: Vector3, normal: Vector3, radius
 
 
 func _offer_coverage(coverage: Dictionary, key: Vector2i, alpha: float, height: float, normal: Vector3, color: Color) -> void:
-	var previous: Dictionary = coverage.get(key, {})
-	if not previous.is_empty() and float(previous["alpha"]) >= alpha:
+	if coverage.has(key) and float(coverage[key]["alpha"]) >= alpha:
 		return
 	coverage[key] = {"alpha": alpha, "height": height, "normal": normal, "color": color}
 
 
 func _surface_support(key: Vector2i, data: Dictionary) -> Dictionary:
-	var expected_height := float(data["height"])
-	var expected_normal: Vector3 = data["normal"]
+	return _support_at(key, float(data["height"]), data["normal"])
+
+
+func _support_at(key: Vector2i, expected_height: float, expected_normal: Vector3) -> Dictionary:
 	var cache_key := Vector3i(key.x, roundi(expected_height / 0.12), key.y)
 	var cached: Dictionary = _support_cache.get(cache_key, {})
 	if not cached.is_empty() and absf(float(cached["expected_height"]) - expected_height) <= SUPPORT_HEIGHT_TOLERANCE and (cached["expected_normal"] as Vector3).dot(expected_normal) >= SUPPORT_NORMAL_DOT:
@@ -407,35 +514,3 @@ func _surface_support(key: Vector2i, data: Dictionary) -> Dictionary:
 			result["normal"] = hit_normal
 	_support_cache[cache_key] = result
 	return result
-
-
-func _append_supported_triangle(a: Vector2i, b: Vector2i, c: Vector2i, coverage: Dictionary, support: Dictionary, vertex_indices: Dictionary) -> void:
-	var a_support: Dictionary = support[a]
-	var b_support: Dictionary = support[b]
-	var c_support: Dictionary = support[c]
-	if not bool(a_support["supported"]) or not bool(b_support["supported"]) or not bool(c_support["supported"]):
-		return
-	var a_data: Dictionary = coverage[a]
-	var b_data: Dictionary = coverage[b]
-	var c_data: Dictionary = coverage[c]
-	if maxf(float(a_data["alpha"]), maxf(float(b_data["alpha"]), float(c_data["alpha"]))) <= 0.001:
-		return
-	_indices.append(_coverage_vertex_index(a, coverage, support, vertex_indices))
-	_indices.append(_coverage_vertex_index(b, coverage, support, vertex_indices))
-	_indices.append(_coverage_vertex_index(c, coverage, support, vertex_indices))
-
-
-func _coverage_vertex_index(key: Vector2i, coverage: Dictionary, support: Dictionary, vertex_indices: Dictionary) -> int:
-	if vertex_indices.has(key):
-		return int(vertex_indices[key])
-	var data: Dictionary = coverage[key]
-	var floor: Dictionary = support[key]
-	var point := Vector3(float(key.x) * GRID_STEP, float(floor["height"]), float(key.y) * GRID_STEP)
-	point += (floor["normal"] as Vector3) * SURFACE_OFFSET
-	var color: Color = data["color"]
-	color.a = float(data["alpha"])
-	var index := _vertices.size()
-	_vertices.append(point)
-	_colors.append(color)
-	vertex_indices[key] = index
-	return index

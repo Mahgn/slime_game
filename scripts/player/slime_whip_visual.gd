@@ -137,7 +137,7 @@ func get_visible_extension() -> float:
 	return _visible_extension
 
 
-func refresh_contact(phase: StringName, remaining: float, variant: int, exclude_rid: RID) -> void:
+func refresh_contact(phase: StringName, remaining: float, variant: int, exclude_rid: RID, draw_now: bool = true) -> void:
 	if phase == &"":
 		_clear_contact()
 		set_phase(phase, remaining, variant)
@@ -182,7 +182,10 @@ func refresh_contact(phase: StringName, remaining: float, variant: int, exclude_
 	_previous_pose = pose
 	_previous_transform = global_transform
 	_previous_phase = phase
-	set_phase(phase, remaining, variant)
+	# The controller draws after render-time body deformation. Avoid building
+	# the same mesh again in each physics tick (including catch-up ticks).
+	if draw_now:
+		set_phase(phase, remaining, variant)
 
 
 func _update_surface_lay(exclude_rid: RID, live_pose: Dictionary, phase: StringName) -> void:

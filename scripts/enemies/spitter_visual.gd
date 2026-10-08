@@ -1,6 +1,10 @@
 extends Node3D
 class_name SpitterVisual
 
+# Model-space contact points are immutable. Read mesh arrays during model
+# preparation, never synchronously for every first hit/death in combat.
+static var _death_points_by_mesh: Dictionary = {}
+
 ## Art only: feet compensate the visual torso; the combat root stays unchanged.
 const DEATH_SECONDS := 0.92
 const HURT_SECONDS := 0.23
@@ -72,7 +76,21 @@ func _ready() -> void:
 		_limb_materials.append(leg.get_node("Shin").material_override as ShaderMaterial)
 	for part in mouth.get_children():
 		_mouth_materials.append(part.material_override as ShaderMaterial)
+	for mesh_node in _contact_meshes():
+		if not _death_points_by_mesh.has(mesh_node.mesh):
+			var points := PackedVector3Array()
+			var vertices: PackedVector3Array = mesh_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			for index in range(0,vertices.size(),8): points.append(vertices[index])
+			_death_points_by_mesh[mesh_node.mesh] = points
 	set_process(false)
+
+
+func _contact_meshes() -> Array[MeshInstance3D]:
+	var result: Array[MeshInstance3D] = [body]
+	for leg in legs:
+		result.append(leg.get_node("Shin") as MeshInstance3D)
+		result.append(leg.get_node("Foot/WebbedFoot") as MeshInstance3D)
+	return result
 
 
 func animate(delta: float, local_velocity: Vector3, phase: StringName, progress: float) -> void:
@@ -176,16 +194,8 @@ func play_death(ground_position: Vector3) -> void:
 		material.set_shader_parameter("throat_amount", 0.0)
 	# Sample the visible surface once. Contact follows the body and folding feet,
 	# without adding a physics corpse or scaling the model to make it fit the floor.
-	var contact_meshes: Array[MeshInstance3D] = [body]
-	for leg in legs:
-		contact_meshes.append(leg.get_node("Shin") as MeshInstance3D)
-		contact_meshes.append(leg.get_node("Foot/WebbedFoot") as MeshInstance3D)
-	for mesh_node in contact_meshes:
-		var points := PackedVector3Array()
-		var vertices: PackedVector3Array = mesh_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		for index in range(0, vertices.size(), 8):
-			points.append(vertices[index])
-		_death_surfaces.append({"node": mesh_node, "points": points})
+	for mesh_node in _contact_meshes():
+		_death_surfaces.append({"node": mesh_node, "points": _death_points_by_mesh[mesh_node.mesh]})
 	set_process(true)
 
 

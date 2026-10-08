@@ -2,6 +2,9 @@ extends SlimeKeepersWorld
 
 const HAZARD = preload("res://scripts/keepers/keepers_facility_hazard.gd")
 const AMBIENCE = preload("res://scripts/keepers/keepers_facility_ambience.gd")
+const INK_STYLE = preload("res://scripts/keepers/keepers_ink_style.gd")
+const RENDER_WARMUP = preload("res://scripts/keepers/keepers_render_warmup.gd")
+var ink_style: SlimeKeepersInkStyle
 var hazards: Array[Node3D] = []
 var ambience: Node3D
 var introduced_encounters: Dictionary = {}
@@ -40,6 +43,16 @@ func _ready() -> void:
 	ambience.name = "FacilitySoundscape"
 	ambience.route = self
 	add_child(ambience)
+	ink_style = INK_STYLE.new()
+	ink_style.name = "InkStyle"
+	ink_style.route = self
+	add_child(ink_style)
+	_transitioning = true
+	var player_process := player.process_mode
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	await RENDER_WARMUP.prepare(self)
+	player.process_mode = player_process
+	_transitioning = false
 
 func _update_visibility() -> void:
 	# A compact building keeps its structural silhouette across room boundaries.

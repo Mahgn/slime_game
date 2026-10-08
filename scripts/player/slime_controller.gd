@@ -158,7 +158,7 @@ func _physics_process(delta: float) -> void:
 
 	var impact_speed := -velocity.y
 	move_and_slide()
-	_whip_visual.refresh_contact(_phase if _action == &"slime_whip" else &"", _phase_left, _whip_variant, get_rid())
+	_whip_visual.refresh_contact(_phase if _action == &"slime_whip" else &"", _phase_left, _whip_variant, get_rid(), false)
 	if not was_on_floor and is_on_floor():
 		_landing_pulse = 0.14
 		_ground_trail.add_landing_splash(impact_speed)
