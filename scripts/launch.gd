@@ -1,6 +1,8 @@
 extends Control
 
 const START_SCENE := "res://scenes/opening/opening_route.tscn"
+const KEEPERS_SCENE := "res://scenes/keepers/keepers_level.tscn"
+const KEEPERS_RUN := "res://scenes/keepers/keepers_facility.tscn"
 
 var _main_panel: PanelContainer
 var _settings_panel: SlimeSettingsPanel
@@ -31,11 +33,16 @@ func _close_settings() -> void:
 
 
 func _start_game() -> void:
+	_open_level(START_SCENE)
+
+
+func _open_level(scene_path: String) -> void:
 	var tree := get_tree()
 	tree.paused = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if tree.has_meta(&"checkpoint_active"):
 		tree.remove_meta(&"checkpoint_active")
-	var result := tree.change_scene_to_file(START_SCENE)
+	var result := tree.change_scene_to_file(scene_path)
 	if result != OK:
 		_status.text = "Не удалось открыть игру: %d" % result
 
@@ -52,8 +59,8 @@ func _build_ui() -> void:
 	_main_panel.anchor_bottom = 0.5
 	_main_panel.offset_left = -280
 	_main_panel.offset_right = 280
-	_main_panel.offset_top = -205
-	_main_panel.offset_bottom = 205
+	_main_panel.offset_top = -280
+	_main_panel.offset_bottom = 280
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("211b15")
 	style.border_color = Color("8f7448")
@@ -81,6 +88,12 @@ func _build_ui() -> void:
 	var play := _button(box, "Играть")
 	play.name = "PlayButton"
 	play.pressed.connect(_start_game)
+	var run := _button(box, "Путь смотрителя · новый корпус")
+	run.name = "KeepersRunButton"
+	run.pressed.connect(_open_level.bind(KEEPERS_RUN))
+	var keepers := _button(box, "Котельная смотрителя")
+	keepers.name = "KeepersButton"
+	keepers.pressed.connect(_open_level.bind(KEEPERS_SCENE))
 	var settings := _button(box, "Настройки")
 	settings.name = "SettingsButton"
 	settings.pressed.connect(_show_settings)

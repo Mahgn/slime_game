@@ -62,7 +62,7 @@ func _run() -> void:
 	await _physics_frames(12)
 	await _capture("jump")
 	await _physics_frames(36)
-	workspace.player.pointer = workspace.player.camera.unproject_position(workspace.player.global_position + Vector3.FORWARD * 2.0)
+	workspace.player.controls.pointer = workspace.player.presentation.camera.unproject_position(workspace.player.global_position + Vector3.FORWARD * 2.0)
 	Input.action_press(&"attack_primary")
 	await _physics_frames(6, &"attack_primary")
 	Input.action_release(&"attack_primary")

@@ -21,8 +21,8 @@ const SHELL: AbilityDefinition = preload("res://data/abilities/elastic_shell.tre
 const KNOWN_ABILITIES: Array[StringName] = [&"sticky_spit", &"slime_spikes", &"elastic_shell"]
 
 const MOVE_SPEED := 5.2
-const GROUND_ACCELERATION := 28.0
-const GROUND_BRAKING := 38.0
+const GROUND_ACCELERATION := 65.0
+const GROUND_BRAKING := 85.0
 const AIR_ACCELERATION := 18.2
 const JUMP_SPEED := 6.4
 const CHARGED_JUMP_SPEED := 8.4
@@ -34,13 +34,8 @@ const STANDING_COLLISION_CENTER_Y := 0.40
 const COMPRESSED_COLLISION_HEIGHT := 0.50
 const COMPRESSED_COLLISION_RADIUS := 0.24
 const COMPRESSED_COLLISION_CENTER_Y := 0.25
-const STANDING_CAMERA_HEIGHT := 1.42
-const COMPRESSED_CAMERA_HEIGHT := 0.48
-const COMPRESSED_CAMERA_DISTANCE := 2.70
 const COYOTE_SECONDS := 0.10
 const JUMP_BUFFER_SECONDS := 0.12
-const MOUSE_SENSITIVITY := 0.0025
-const BODY_TURN_RATE := 10.0
 const MAX_HEALTH := 100
 const HURT_PROTECTION := 0.45
 const HIT_REACTION_SECONDS := 0.36
@@ -55,10 +50,8 @@ const WHIP_HALF_ANGLE_COS := 0.642788
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var visual_root: Node3D = $VisualRoot
 @onready var hero_visual: MeshInstance3D = $VisualRoot/SlimeHeroModelV5
-@onready var camera_yaw: Node3D = $CameraYaw
-@onready var camera_pitch: Node3D = $CameraYaw/CameraPitch
-@onready var spring_arm: SpringArm3D = $CameraYaw/CameraPitch/SpringArm3D
-@onready var camera: Camera3D = $CameraYaw/CameraPitch/SpringArm3D/Camera3D
+@onready var controls: SlimeIsometricInput = $IsometricInput
+@onready var presentation: SlimeIsometricPresentation = $IsometricPresentation
 
 var _coyote_left := 0.0
 var _jump_buffer_left := 0.0
@@ -101,8 +94,6 @@ var _absorb_requires_release := false
 var _received_casts: Dictionary = {}
 var _visual_time := 0.0
 var _visual_rest_position := Vector3.ZERO
-var _camera_pitch_desired := 0.0
-var _spring_rest_length := 0.0
 
 
 func _ready() -> void:
@@ -110,11 +101,8 @@ func _ready() -> void:
 	add_to_group(&"player")
 	floor_snap_length = 0.20
 	floor_max_angle = deg_to_rad(45.0)
-	spring_arm.add_excluded_object(get_rid())
 	_whip_rng.randomize()
 	_visual_rest_position = visual_root.position
-	_camera_pitch_desired = camera_pitch.rotation.x
-	_spring_rest_length = spring_arm.spring_length
 	_standing_collision_shape = collision_shape.shape as CapsuleShape3D
 	_compressed_collision_shape = CapsuleShape3D.new()
 	_compressed_collision_shape.radius = COMPRESSED_COLLISION_RADIUS
@@ -127,25 +115,11 @@ func _ready() -> void:
 	health_changed.emit(health, MAX_HEALTH)
 
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var sensitivity := MOUSE_SENSITIVITY * SlimeGameSettings.current().mouse_sensitivity_scale
-		camera_yaw.rotation.y -= event.screen_relative.x * sensitivity
-		var vertical_direction := -1.0 if SlimeGameSettings.current().invert_y else 1.0
-		_camera_pitch_desired = clampf(
-			_camera_pitch_desired - event.screen_relative.y * sensitivity * vertical_direction,
-			deg_to_rad(-65.0),
-			deg_to_rad(20.0)
-		)
-		if not _is_compressed:
-			camera_pitch.rotation.x = _camera_pitch_desired
-
-
 func _physics_process(delta: float) -> void:
 	if health <= 0:
 		return
 	_update_compression(delta)
-	_follow_camera_heading(delta)
+	_update_facing(delta)
 	_hurt_protection_left = maxf(0.0, _hurt_protection_left - delta)
 	for ability_id: StringName in _cooldowns.keys():
 		_cooldowns[ability_id] = maxf(0.0, float(_cooldowns[ability_id]) - delta)
@@ -192,17 +166,17 @@ func _physics_process(delta: float) -> void:
 
 
 func screen_movement_direction(axes: Vector2) -> Vector3:
-	var direction := camera_yaw.global_basis.x * axes.x + camera_yaw.global_basis.z * axes.y
-	direction.y = 0.0
-	return direction.normalized()
+	return controls.screen_movement_direction(axes)
 
 
 func _update_horizontal_velocity(target: Vector3, axes: Vector2, grounded: bool, delta: float) -> void:
 	var acceleration := AIR_ACCELERATION
 	if grounded:
 		acceleration = GROUND_ACCELERATION if axes.length_squared() > 0.0 else GROUND_BRAKING
-	velocity.x = move_toward(velocity.x, target.x, acceleration * delta)
-	velocity.z = move_toward(velocity.z, target.z, acceleration * delta)
+	var horizontal := Vector2(velocity.x, velocity.z)
+	horizontal = horizontal.move_toward(Vector2(target.x, target.z), acceleration * delta)
+	velocity.x = horizontal.x
+	velocity.z = horizontal.y
 
 
 
@@ -226,7 +200,7 @@ func get_jump_charge_ratio() -> float:
 	return clampf(_jump_charge_seconds / JUMP_CHARGE_FULL_SECONDS, 0.0, 1.0)
 
 
-func _update_compression(delta: float) -> void:
+func _update_compression(_delta: float) -> void:
 	for source_id: int in _low_passage_sources.keys():
 		var source_ref := _low_passage_sources[source_id] as WeakRef
 		if source_ref.get_ref() == null:
@@ -239,12 +213,6 @@ func _update_compression(delta: float) -> void:
 		collision_shape.shape = _standing_collision_shape
 		collision_shape.position.y = STANDING_COLLISION_CENTER_Y
 		_is_compressed = false
-	var camera_height := COMPRESSED_CAMERA_HEIGHT if _is_compressed else STANDING_CAMERA_HEIGHT
-	camera_yaw.position.y = move_toward(camera_yaw.position.y, camera_height, 8.0 * delta)
-	var pitch_target := 0.0 if _is_compressed else _camera_pitch_desired
-	camera_pitch.rotation.x = move_toward(camera_pitch.rotation.x, pitch_target, 8.0 * delta)
-	var arm_target := COMPRESSED_CAMERA_DISTANCE if _is_compressed else _spring_rest_length
-	spring_arm.spring_length = move_toward(spring_arm.spring_length, arm_target, 8.0 * delta)
 
 
 func _can_stand() -> bool:
@@ -287,32 +255,22 @@ func _update_jump_input(delta: float, was_on_floor: bool) -> void:
 		_jump_charging = false
 		_jump_charge_seconds = 0.0
 
-func _follow_camera_heading(delta: float) -> void:
-	# Transfer the camera's local yaw to the physical body without changing
-	# the camera's world heading or the camera-relative movement vector.
-	var yaw_gap := wrapf(camera_yaw.rotation.y, -PI, PI)
-	var turn := yaw_gap * minf(1.0, delta * BODY_TURN_RATE)
-	rotation.y = wrapf(rotation.y + turn, -PI, PI)
-	camera_yaw.rotation.y = wrapf(camera_yaw.rotation.y - turn, -PI, PI)
+func _update_facing(delta: float) -> void:
+	var aim_direction := controls.get_aim_point() - global_position
+	aim_direction.y = 0.0
 	if _action != &"":
-		var local_aim := global_basis.inverse() * _action_direction
-		visual_root.rotation.y = atan2(-local_aim.x, -local_aim.z)
-	else:
-		visual_root.rotation.y = lerp_angle(visual_root.rotation.y, 0.0, minf(1.0, delta * BODY_TURN_RATE))
+		aim_direction = _action_direction
+	if aim_direction.length_squared() > 0.01:
+		var local_direction := global_basis.inverse() * aim_direction
+		visual_root.rotation.y = lerp_angle(visual_root.rotation.y,
+			atan2(-local_direction.x, -local_direction.z), minf(1.0, delta * 18.0))
 
 func _process(delta: float) -> void:
 	if health <= 0:
-		camera.rotation.z = 0.0
 		return
 	_visual_time += delta
 	_landing_pulse = maxf(0.0, _landing_pulse - delta)
 	_hit_pulse = maxf(0.0, _hit_pulse - delta)
-	var hit_fraction := _hit_pulse / HIT_REACTION_SECONDS
-	var landing_fraction := _landing_pulse / 0.14
-	camera.rotation.z = SlimeGameSettings.current().camera_shake * (
-		0.014 * hit_fraction * sin(_visual_time * 28.0)
-		+ 0.006 * landing_fraction * sin(_visual_time * 22.0)
-	)
 	var hit_pose := 0.0
 	if _hit_pulse > 0.0:
 		var hit_progress := 1.0 - _hit_pulse / HIT_REACTION_SECONDS
@@ -480,14 +438,12 @@ func request_action(action_id: StringName) -> bool:
 			_phase_left = 0.10
 	_cast_sequence += 1
 	_cast_key = "%d:%d:%s" % [get_instance_id(), _cast_sequence, action_id]
-	_action_aim_point = _get_camera_aim_point()
+	_action_aim_point = controls.get_aim_point()
 	_action_direction = _action_aim_point - (global_position + Vector3(0.0, _combat_origin_height(), 0.0))
 	_action_direction.y = 0.0
 	_action_direction = _action_direction.normalized()
 	if _action_direction.length_squared() < 0.01:
-		_action_direction = -camera_yaw.global_basis.z
-		_action_direction.y = 0.0
-		_action_direction = _action_direction.normalized()
+		_action_direction = controls.screen_movement_direction(Vector2(0, -1))
 	var local_aim := global_basis.inverse() * _action_direction
 	visual_root.rotation.y = atan2(-local_aim.x, -local_aim.z)
 	if action_id == &"slime_whip":
@@ -560,16 +516,6 @@ func _do_whip_hit() -> void:
 			continue
 		if target.call("receive_hit", WHIP_DAMAGE, _cast_key, &"player"):
 			whip_hit.emit(target_point)
-
-
-func _get_camera_aim_point() -> Vector3:
-	var viewport_center := get_viewport().get_visible_rect().size * 0.5
-	var ray_origin := camera.project_ray_origin(viewport_center)
-	var ray_direction := camera.project_ray_normal(viewport_center)
-	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_direction * 40.0, 5)
-	query.exclude = [get_rid()]
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	return hit["position"] if not hit.is_empty() else ray_origin + ray_direction * 40.0
 
 
 func _release_spit() -> void:

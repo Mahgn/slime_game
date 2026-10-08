@@ -53,6 +53,7 @@ func _enter_room(index: int) -> void:
 		if is_instance_valid(mesh): mesh.show()
 	player.presentation.hidden.clear()
 	player.presentation.occluders.clear()
+	player.presentation.room_cutaway = null
 	if is_instance_valid(geometry):
 		remove_child(geometry)
 		geometry.queue_free()
@@ -65,7 +66,7 @@ func _enter_room(index: int) -> void:
 	geometry.process_mode = Node.PROCESS_MODE_PAUSABLE
 	add_child(geometry)
 	geometry.build(rooms[index],index)
-	player.presentation.occluders.assign(geometry.occluders)
+	player.presentation.room_cutaway = geometry.cutaway
 	var raw: Array = rooms[index].cameraCenter
 	set_meta(&"isometric_camera_center",world_point(Vector3(float(raw[0]),float(raw[1]),float(raw[2]))))
 	player.global_position = spawn_position()
@@ -74,8 +75,9 @@ func _enter_room(index: int) -> void:
 	player._ground_trail.clear_for_room_change()
 	player._whip_visual._clear_contact()
 	player.presentation.zoom_target = [13.0,13.5,15.0][index]
-	player.camera.size = player.presentation.zoom_target
+	player.presentation.camera.size = player.presentation.zoom_target
 	player.presentation._update_camera(0.0)
+	player.presentation._update_occlusion()
 	_room_label.text = String(rooms[index].title)
 
 

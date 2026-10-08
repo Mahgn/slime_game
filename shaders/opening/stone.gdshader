@@ -1,5 +1,6 @@
 shader_type spatial;
 render_mode cull_back;
+#include "res://shaders/isometric/cutaway.gdshaderinc"
 uniform vec4 stone_color : source_color = vec4(0.48, 0.43, 0.34, 1.0);
 varying vec3 stone_position;
 varying vec3 stone_normal;
@@ -10,6 +11,9 @@ void vertex() {
     stone_normal = MODEL_NORMAL_MATRIX * NORMAL;
 }
 void fragment() {
+    if (cutaway_dither(FRAGCOORD.xy) < cutaway_amount) {
+        discard;
+    }
     vec3 n = abs(normalize(stone_normal));
     vec2 p = n.y > 0.6 ? stone_position.xz : (n.x > n.z ? stone_position.zy : stone_position.xy);
     vec2 grid = p / vec2(0.78, 0.52);

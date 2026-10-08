@@ -1,0 +1,28 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/keepers/keepers_level.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="2"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.015, 0.021, 0.031, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.49, 0.60, 0.72, 1)
+ambient_light_energy = 0.40
+tonemap_mode = 0
+
+[node name="KeepersLevel" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.95, -0.55, 0)
+light_color = Color(0.88, 0.91, 1, 1)
+light_energy = 0.55
+shadow_enabled = true
+directional_shadow_max_distance = 40.0
+
+[node name="SlimePlayer" parent="." instance=ExtResource("2")]
+position = Vector3(6, 0.045, 5.5)

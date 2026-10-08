@@ -19,7 +19,10 @@ func _run() -> void:
 	watchdog.timeout.connect(func() -> void: printerr("FAIL cleanup watchdog"); quit(124))
 	watchdog.start()
 	for directory in ["scenes/levels", "scenes/art_review", "scripts/levels", "scripts/art_review", "slime_lab"]:
-		_check(not DirAccess.dir_exists_absolute("res://" + directory), "removed " + directory)
+		var remaining := _old_runtime_files("res://" + directory)
+		if not remaining.is_empty():
+			print("CLEANUP_REMAINS ", remaining)
+		_check(remaining.is_empty(), "removed runtime content from " + directory)
 	var checkpoint_before := _checkpoint_text()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MENU_SETTINGS.get_base_dir()))
 	SlimeGameSettings.current().load_settings(MENU_SETTINGS)
@@ -31,7 +34,7 @@ func _run() -> void:
 	for button in menu.find_children("*", "Button", true, false):
 		if button.is_visible_in_tree():
 			captions.append(button.text)
-	_check(captions == ["Играть", "Настройки", "Выход"], "menu exposes Play, settings and exit")
+	_check(captions == ["Играть", "Путь смотрителя · новый корпус", "Котельная смотрителя", "Настройки", "Выход"], "menu exposes three routes, settings and exit")
 	var settings_button := menu.find_child("SettingsButton", true, false) as Button
 	settings_button.pressed.emit()
 	await _frames(2)
@@ -164,6 +167,52 @@ func _push_pause() -> void:
 
 func _checkpoint_text() -> String:
 	return FileAccess.get_file_as_string("user://checkpoint.json") if FileAccess.file_exists("user://checkpoint.json") else "<missing>"
+
+
+func _old_runtime_files(root_path: String) -> Array[String]:
+	var remaining: Array[String] = []
+	if not DirAccess.dir_exists_absolute(root_path):
+		return remaining
+	# Scan only the five retired roots above. User backups and local output may
+	# remain there, but an old scene, script or runtime resource must still fail.
+	var pending: Array[Dictionary] = [{"path": root_path, "depth": 0}]
+	var scanned_entries := 0
+	while not pending.is_empty():
+		var entry: Dictionary = pending.pop_back()
+		var path: String = entry["path"]
+		var depth: int = entry["depth"]
+		if depth > 32:
+			remaining.append("scan depth exceeded: " + path)
+			return remaining
+		var directory := DirAccess.open(path)
+		if directory == null:
+			remaining.append("cannot inspect: " + path)
+			return remaining
+		directory.include_hidden = true
+		if directory.list_dir_begin() != OK:
+			remaining.append("cannot list: " + path)
+			return remaining
+		var name := directory.get_next()
+		while not name.is_empty():
+			scanned_entries += 1
+			if scanned_entries > 20000:
+				directory.list_dir_end()
+				remaining.append("scan entry limit exceeded: " + root_path)
+				return remaining
+			var child_path := path.path_join(name)
+			if name == ".godot" or name == "." or name == "..":
+				pass
+			elif directory.is_link(name):
+				# Never follow a link outside the retired tree or accept an
+				# uninspected linked subtree as successfully cleaned.
+				remaining.append("uninspected link: " + child_path)
+			elif directory.current_is_dir():
+				pending.append({"path": child_path, "depth": depth + 1})
+			elif name.to_lower() == "project.godot" or name.get_extension().to_lower() in ["gd", "tscn", "scn", "tres", "res", "gdshader"]:
+				remaining.append(child_path)
+			name = directory.get_next()
+		directory.list_dir_end()
+	return remaining
 
 
 func _frames(count: int) -> void:

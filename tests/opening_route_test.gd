@@ -6,10 +6,14 @@ var route: SlimeOpeningRoute
 var failures := 0
 var capture := false
 var samples: Array = []
+var capture_output := OUTPUT
 
 
 func _initialize() -> void:
 	capture = "--capture" in OS.get_cmdline_user_args()
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--capture-dir="):
+			capture_output = argument.trim_prefix("--capture-dir=").trim_suffix("/") + "/"
 	call_deferred("_run")
 
 
@@ -40,11 +44,11 @@ func _run() -> void:
 	await _shot("01-start")
 	# Compare the two existing camera behaviours in the same geometry.
 	var center: Vector3 = route.get_meta(&"isometric_camera_center")
-	var start_camera := route.player.camera.global_position
+	var start_camera := route.player.presentation.camera.global_position
 	route.remove_meta(&"isometric_camera_center")
 	route.player.presentation._update_camera(0.0)
 	await _shot("01-follow-comparison")
-	_check(route.player.camera.global_position.distance_to(start_camera)>0.5,"room centre and following are actually compared")
+	_check(route.player.presentation.camera.global_position.distance_to(start_camera)>0.5,"room centre and following are actually compared")
 	route.set_meta(&"isometric_camera_center",center)
 	route.player.presentation._update_camera(0.0)
 	await _drive(route.world_point(Vector3(4.5,0,3.8)))
@@ -97,25 +101,24 @@ func _run() -> void:
 	for raw: Array in low.slice(1): await _drive(_v(raw),180)
 	_check(route.player.is_on_floor() and absf(route.player.global_position.y-0.35)<0.1,"lower path and sloped ramp return to A")
 	await _shot("03-ramp-return")
-	# Visual occlusion never removes a physical wall; restore on exit.
-	var collider_count := route.geometry.find_children("*","CollisionShape3D",true,false).size()
-	var visibility_checked := false
-	for target: Vector3 in [route.world_point(Vector3(6.8,-0.75,6.9)),_v(steps[4]),_v(steps[6])]:
-		route.player.global_position=target+Vector3.UP*0.05
-		route.player.velocity=Vector3.ZERO
-		await _frames(12)
-		route.player.presentation._update_occlusion()
-		visibility_checked=visibility_checked or not route.player.presentation.hidden.is_empty()
-	_check(visibility_checked and route.geometry.find_children("*","CollisionShape3D",true,false).size()==collider_count,"cutaway activates while physical geometry stays intact")
-	var previously_hidden: Array=route.player.presentation.hidden.duplicate()
+	# Whole authored sections reveal the lower route while every supporting
+	# floor and physical boundary remains in the simulation.
+	var original_shapes := _collision_state()
+	var cutaway: SlimeRoomCutaway = route.geometry.cutaway
+	route.player.global_position=route.world_point(Vector3(3.9,-0.75,1.1))
+	route.player.velocity=Vector3.ZERO
+	await _frames(25)
+	var lower_revealed := cutaway.lower_route and cutaway.sections.size() == 3
+	for section: Dictionary in cutaway.sections.values():
+		lower_revealed = lower_revealed and is_equal_approx(float(section.amount), 1.0)
+	_check(lower_revealed and _collision_state() == original_shapes,"lower gallery reveals complete upper sections without changing collision")
 	route.player.global_position=route.spawn_position()+Vector3.UP*0.04
 	route.player.velocity=Vector3.ZERO
-	await _frames(12)
-	route.player.presentation._update_occlusion()
-	var restored:=false
-	for mesh in previously_hidden:
-		restored=restored or mesh.visible
-	_check(restored,"cutaway restores geometry when the hero leaves its shadow")
+	await _frames(25)
+	var upper_restored := route.player.is_on_floor() and not cutaway.lower_route
+	for section: Dictionary in cutaway.sections.values():
+		upper_restored = upper_restored and is_zero_approx(float(section.amount))
+	_check(upper_restored and route.player.presentation.hidden.is_empty(),"upper landing restores the whole gallery without independent mesh hiding")
 	var paused_position := route.player.global_position
 	route._pause_game()
 	Input.action_press(&"move_right")
@@ -153,6 +156,15 @@ func _checkpoint() -> String:
 	return FileAccess.get_file_as_string("user://checkpoint.json") if FileAccess.file_exists("user://checkpoint.json") else "<missing>"
 
 
+func _collision_state() -> Dictionary:
+	var state := {}
+	for node in route.geometry.find_children("*", "CollisionShape3D", true, false):
+		var shape := node as CollisionShape3D
+		var body := shape.get_parent() as CollisionObject3D
+		state[shape.get_instance_id()] = [shape.shape, shape.disabled, body.collision_layer, body.collision_mask, shape.global_transform]
+	return state
+
+
 func _v(raw: Array) -> Vector3:
 	return route.world_point(Vector3(float(raw[0]),float(raw[1]),float(raw[2])))
 
@@ -174,10 +186,9 @@ func _steer(target: Vector3) -> void:
 	var dir: Vector3=target-route.player.global_position
 	dir.y=0
 	dir=dir.normalized()
-	var x:=dir.dot(route.player.camera_yaw.global_basis.x)
-	var z:=dir.dot(route.player.camera_yaw.global_basis.z)
-	Input.action_press(&"move_right" if x>=0 else &"move_left",absf(x))
-	Input.action_press(&"move_back" if z>=0 else &"move_forward",absf(z))
+	var axes := route.player.controls.world_direction_to_screen_axes(dir)
+	Input.action_press(&"move_right" if axes.x>=0 else &"move_left",absf(axes.x))
+	Input.action_press(&"move_back" if axes.y>=0 else &"move_forward",absf(axes.y))
 
 
 func _drive(target: Vector3, limit: int = 160) -> void:
@@ -220,9 +231,9 @@ func _shot(label: String) -> void:
 		route._resume_game()
 	await _frames(8,false)
 	RenderingServer.force_draw()
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(capture_output))
 	var image:=root.get_texture().get_image()
-	var result:=image.save_png(OUTPUT+label+".png")
+	var result:=image.save_png(capture_output+label+".png")
 	_check(result==OK,"native capture "+label)
 
 

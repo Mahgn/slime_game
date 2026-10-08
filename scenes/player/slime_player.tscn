@@ -1,8 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
 
-[ext_resource type="Script" path="res://scripts/player/slime_isometric_controller.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/player/slime_controller.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/player/slime_hero_visual.gd" id="2_visual"]
 [ext_resource type="ArrayMesh" path="res://assets/models/slime_hero_v5.res" id="3_model"]
+[ext_resource type="Script" path="res://scripts/player/slime_isometric_input.gd" id="4_input"]
+[ext_resource type="Script" path="res://scripts/isometric/isometric_presentation.gd" id="5_presentation"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.38
@@ -24,16 +26,16 @@ position = Vector3(0, 0.43, 0)
 mesh = ExtResource("3_model")
 script = ExtResource("2_visual")
 
-[node name="CameraYaw" type="Node3D" parent="."]
-position = Vector3(0, 1.42, 0)
+[node name="IsometricInput" type="Node" parent="."]
+script = ExtResource("4_input")
 
-[node name="CameraPitch" type="Node3D" parent="CameraYaw"]
-rotation = Vector3(-0.174533, 0, 0)
+[node name="IsometricPresentation" type="Node3D" parent="."]
+top_level = true
+script = ExtResource("5_presentation")
 
-[node name="SpringArm3D" type="SpringArm3D" parent="CameraYaw/CameraPitch"]
-spring_length = 4.65
-collision_mask = 1
-
-[node name="Camera3D" type="Camera3D" parent="CameraYaw/CameraPitch/SpringArm3D"]
+[node name="Camera3D" type="Camera3D" parent="IsometricPresentation"]
+projection = 1
 current = true
-fov = 65.0
+size = 13.0
+near = 0.1
+far = 140.0

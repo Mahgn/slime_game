@@ -47,7 +47,7 @@ func _report(test_id: String, problem: String) -> void:
 
 func _test_low_passage() -> String:
 	_release_actions()
-	var fixture := _make_floor_fixture(Vector3(0.0, 0.05, 1.0))
+	var fixture := _make_floor_fixture(Vector3(0.0, 0.05, 1.0), true)
 	var player := fixture.get_node("SlimePlayer") as SlimeController
 	_add_static_box(fixture, "LowCeiling", Vector3(0.0, 0.66, -4.0), Vector3(1.6, 0.20, 3.5))
 	var area := Area3D.new()
@@ -68,9 +68,7 @@ func _test_low_passage() -> String:
 	var initially_normal := player.is_on_floor() and not player.is_compressed()
 	var body_collision := player.get_node("CollisionShape3D") as CollisionShape3D
 	var standing_top := body_collision.position.y + (body_collision.shape as CapsuleShape3D).height * 0.5
-	var rest_camera_height := player.camera_yaw.position.y
-	var rest_camera_distance := player.spring_arm.spring_length
-	var rest_pitch := player.camera_pitch.rotation.x
+	var rest_camera := player.presentation.camera.global_transform
 	Input.action_press(&"move_forward")
 	Input.action_press(&"move_right")
 	var entry_ticks := 0
@@ -84,9 +82,7 @@ func _test_low_passage() -> String:
 	var through_roof := inside_z < -4.5 and player.is_on_floor()
 	var compressed_inside := player.is_compressed()
 	var compressed_top := body_collision.position.y + (body_collision.shape as CapsuleShape3D).height * 0.5
-	var compressed_camera_height := player.camera_yaw.position.y
-	var compressed_camera_distance := player.spring_arm.spring_length
-	var compressed_pitch := player.camera_pitch.rotation.x
+	var compressed_camera := player.presentation.camera.global_transform
 	# Simulate a zone leaving early while the body is still below the solid roof:
 	# the standing collider must stay compressed until it has physical clearance.
 	player.set_low_passage_active(area, false)
@@ -111,15 +107,13 @@ func _test_low_passage() -> String:
 	var beyond_roof := player.global_position.z < -7.5 and player.is_on_floor()
 	var restored := not player.is_compressed()
 	var restored_top := body_collision.position.y + (body_collision.shape as CapsuleShape3D).height * 0.5
-	var restored_camera_height := player.camera_yaw.position.y
-	var restored_camera_distance := player.spring_arm.spring_length
-	var restored_pitch := player.camera_pitch.rotation.x
+	var restored_camera := player.presentation.camera.global_transform
 	Input.action_press(&"jump")
 	await _physics_steps(1)
 	Input.action_release(&"jump")
 	await _physics_steps(1)
 	var jump_after_exit := player.velocity.y
-	print("M01 tunnel: height %.3f -> %.3f -> %.3f, z %.3f -> %.3f; camera y %.3f -> %.3f -> %.3f, arm %.3f -> %.3f -> %.3f, pitch %.3f -> %.3f -> %.3f; under roof charge=%.2f jump=%s, exit vy=%.3f" % [standing_top, compressed_top, restored_top, inside_z, player.global_position.z, rest_camera_height, compressed_camera_height, restored_camera_height, rest_camera_distance, compressed_camera_distance, restored_camera_distance, rest_pitch, compressed_pitch, restored_pitch, blocked_charge, str(blocked_jump), jump_after_exit])
+	print("M01 tunnel: height %.3f -> %.3f -> %.3f, z %.3f -> %.3f; camera stable inside=%s after=%s; under roof charge=%.2f jump=%s, exit vy=%.3f" % [standing_top, compressed_top, restored_top, inside_z, player.global_position.z, str(compressed_camera.is_equal_approx(rest_camera)), str(restored_camera.is_equal_approx(rest_camera)), blocked_charge, str(blocked_jump), jump_after_exit])
 	await _discard_fixture(fixture)
 	if not initially_normal or standing_top < 0.76:
 		return "player did not start standing on physical floor"
@@ -131,10 +125,10 @@ func _test_low_passage() -> String:
 		return "jump charged or launched while compressed below the roof"
 	if not beyond_roof or not restored or restored_top < 0.76:
 		return "normal collision height did not return after clearing the roof"
-	if absf(rest_pitch) < 0.1 or absf(compressed_camera_height - 0.48) > 0.05 or absf(compressed_camera_distance - 2.70) > 0.05 or absf(compressed_pitch) > 0.03:
-		return "camera did not lower, shorten, and level inside the tunnel"
-	if absf(restored_camera_height - rest_camera_height) > 0.05 or absf(restored_camera_distance - rest_camera_distance) > 0.05 or absf(restored_pitch - rest_pitch) > 0.03:
-		return "camera height, distance, or pitch did not return after tunnel"
+	if not compressed_camera.is_equal_approx(rest_camera):
+		return "compression moved or rotated the independent room camera"
+	if not restored_camera.is_equal_approx(rest_camera):
+		return "standing up changed the independent room camera"
 	if jump_after_exit < 5.0:
 		return "ordinary jump did not return after leaving the passage"
 	return ""
@@ -254,9 +248,11 @@ func _on_passage_exit(body: Node3D, player: SlimeController, area: Area3D) -> vo
 		player.set_low_passage_active(area, false)
 
 
-func _make_floor_fixture(spawn: Vector3) -> Node3D:
+func _make_floor_fixture(spawn: Vector3, fixed_camera: bool = false) -> Node3D:
 	var fixture := Node3D.new()
 	fixture.name = "MovementFixture"
+	if fixed_camera:
+		fixture.set_meta(&"isometric_camera_center", Vector3(0.0, 0.45, -3.0))
 	_add_static_box(fixture, "Floor", Vector3(0.0, -0.2, -3.0), Vector3(10.0, 0.4, 20.0))
 	var player := PLAYER_SCENE.instantiate() as SlimeController
 	player.name = "SlimePlayer"

@@ -1,0 +1,32 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/keepers/keepers_facility.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="2"]
+[ext_resource type="Script" path="res://scripts/keepers/keepers_facility_layout.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/keepers/keepers_facility_geometry.gd" id="4"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.07, 0.09, 0.10, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.52, 0.62, 0.67, 1)
+ambient_light_energy = 0.42
+tonemap_mode = 0
+
+[node name="KeepersFacility" type="Node3D"]
+script = ExtResource("1")
+layout_script = ExtResource("3")
+geometry_script = ExtResource("4")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.95, -0.55, 0)
+light_color = Color(0.85, 0.92, 1, 1)
+light_energy = 0.65
+shadow_enabled = true
+directional_shadow_max_distance = 45.0
+
+[node name="SlimePlayer" parent="." instance=ExtResource("2")]
+position = Vector3(0, 0.045, 16)

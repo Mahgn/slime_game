@@ -3,13 +3,21 @@ extends Node3D
 # Author-built rooms only. No procedural dungeon generation or runtime randomness.
 const STONE_SHADER = preload("res://shaders/opening/stone.gdshader")
 var occluders: Array[MeshInstance3D] = []
+var cutaway: SlimeRoomCutaway
 var stone: ShaderMaterial
 var dark_stone: ShaderMaterial
 var bronze: StandardMaterial3D
 var horizontal_scale := 1.5
+var _active_section: StringName = &""
+var _section_meshes: Dictionary = {}
+var _section_decorations: Dictionary = {}
+var _section_floors: Dictionary = {}
 
 
 func build(room: Dictionary, index: int) -> void:
+	cutaway = SlimeRoomCutaway.new()
+	cutaway.name = "ArchitecturalCutaway"
+	add_child(cutaway)
 	stone = _stone(Color("97866b"))
 	dark_stone = _stone(Color("706b5d"))
 	bronze = _material(Color("68543a"), 0.6)
@@ -22,9 +30,12 @@ func build(room: Dictionary, index: int) -> void:
 			poly = Geometry2D.clip_polygons(poly,slot)[0]
 		var upper: bool = index == 2 and surface.id in ["A", "B", "C"]
 		var thickness := 0.15 if upper else 0.30
+		if upper:
+			_begin_section(StringName("gallery_" + String(surface.id)), float(surface.y))
 		var mesh := _slab(String(surface.id), poly, float(surface.y), thickness, dark_stone if String(surface.id).begins_with("recovery") else stone)
 		if upper:
 			occluders.append(mesh)
+		_active_section = &""
 	if room.has("ramp"):
 		_build_ramp(room.ramp)
 	match index:
@@ -32,8 +43,23 @@ func build(room: Dictionary, index: int) -> void:
 		1: _cistern()
 		2: _gallery(room)
 	var exit_point := _vector(room.points[1].pos)
+	if index == 2:
+		_begin_section(&"gallery_C", exit_point.y)
 	_portal(exit_point, 0.0 if index == 1 else (-0.32 if index == 0 else -PI * 0.5))
 	_lantern(exit_point + Vector3(0.72, 1.25, 0))
+	_active_section = &""
+	for section_id: StringName in _section_meshes:
+		cutaway.register_section(section_id, _section_meshes[section_id], _section_floors[section_id], _section_decorations[section_id])
+
+
+func _begin_section(section_id: StringName, floor_y: float) -> void:
+	_active_section = section_id
+	if not _section_meshes.has(section_id):
+		var meshes: Array[MeshInstance3D] = []
+		var decorations: Array[Node3D] = []
+		_section_meshes[section_id] = meshes
+		_section_decorations[section_id] = decorations
+		_section_floors[section_id] = floor_y
 
 
 func _stone(color: Color) -> ShaderMaterial:
@@ -125,6 +151,9 @@ func _slab(label: String, poly: PackedVector2Array, y: float, depth: float, mate
 	visual.mesh = mesh
 	visual.material_override = material
 	parent.add_child(visual)
+	if _active_section != &"":
+		_section_meshes[_active_section].append(visual)
+		visual.set_meta(&"cutaway_section", _active_section)
 	return visual
 
 
@@ -152,7 +181,7 @@ func _wall(a: Vector2, b: Vector2, y: float, height: float, width: float = 0.28)
 	var yaw := -atan2(direction.y, direction.x)
 	var count := maxi(1, int(ceil(length / 0.85)))
 	var span := length / count
-	# One continuous physical wall; individual masonry rows can be cut visually.
+	# Visual masonry and its continuous collision have the same authored height.
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	body.collision_mask = 2
@@ -210,7 +239,7 @@ func _portal(at: Vector3, yaw: float) -> void:
 
 
 func _lantern(at: Vector3) -> void:
-	_block(at,Vector3(0.24,0.12,0.28),0,bronze,false)
+	_block(at,Vector3(0.24,0.12,0.28),0,bronze,false,false)
 	var glow := _material(Color("ffcf8a"),0.4)
 	glow.emission_enabled = true
 	glow.emission = Color("ffc47c")
@@ -222,6 +251,8 @@ func _lantern(at: Vector3) -> void:
 	light.light_energy = 1.3
 	light.omni_range = 3.4*horizontal_scale
 	add_child(light)
+	if _active_section != &"":
+		_section_decorations[_active_section].append(light)
 
 
 func _hollow(room: Dictionary) -> void:
@@ -232,7 +263,9 @@ func _hollow(room: Dictionary) -> void:
 		# Side exit opens through the northeast edge; no wall across the exit.
 		if a.x > 6.0 and b.x > 6.0 and minf(a.y,b.y) < 2.0:
 			continue
-		_wall(a,b,0,2.0 if (a.y+b.y)*0.5 < 2.8 else 0.55,0.38)
+		# The fixed camera looks from +X/+Z: foreground boundaries stay low,
+		# while the far fractured wall keeps the room's tall silhouette.
+		_wall(a,b,0,2.0 if (a.y+b.y)*0.5 < 2.8 else 0.25,0.38)
 	var rubble: Dictionary = room.features[0]
 	_slab("RubbleBank",_polygon(rubble.polygon),0.66,0.66,dark_stone)
 	for i in 9:
@@ -261,7 +294,10 @@ func _hollow(room: Dictionary) -> void:
 
 
 func _cistern() -> void:
-	_arc_wall(Vector2(3.5,3.5),3.52,-78,78,0.35,1.65,0.30)
+	# Three distant bays retain the vault; the ten camera-facing bays become
+	# a continuous low parapet, revealing the whole walkway before movement.
+	_arc_wall(Vector2(3.5,3.5),3.52,-78,-42,0.35,1.65,0.30)
+	_arc_wall(Vector2(3.5,3.5),3.52,-42,78,0.35,0.25,0.30)
 	_arc_wall(Vector2(3.5,3.5),1.66,24,90,0.35,0.25)
 	_arc_wall(Vector2(3.5,3.5),1.66,-90,-24,0.35,0.25)
 	var basin := PackedVector2Array()
@@ -277,25 +313,33 @@ func _cistern() -> void:
 		var inward := Vector3(3.5-p.x,0,3.5-p.y).normalized()
 		_rib(Vector3(p.x,0.35,p.y),inward,2.65,1.5)
 	# The entry and exit are framed by curved masonry, not an enclosing box.
-	_wall(Vector2(2.3,6),Vector2(2.4,7.5),0.35,0.55)
-	_wall(Vector2(4.7,6),Vector2(4.6,7.5),0.35,0.55)
+	_wall(Vector2(2.3,6),Vector2(2.4,7.5),0.35,0.25)
+	_wall(Vector2(4.7,6),Vector2(4.6,7.5),0.35,0.25)
 
 
 func _gallery(room: Dictionary) -> void:
 	var center := Vector2(3.9,3.9)
-	_arc_wall(center,1.94,100,370,-0.80,1.0,0.12)
+	# The lower route has its own low edge; it never belongs to an upper slice.
+	_arc_wall(center,1.94,100,370,-0.80,0.25,0.12)
 	# Upper parapets stop short of both jump edges.
 	var gap: float = room.jumps[0].angularGapDegrees
-	for section in [[100.0,200.0,0.35],[205.0+gap+5.0,286.0,0.8],[291.0+gap+5.0,365.0,1.25]]:
-		_arc_wall(center,3.66,section[0],section[1],section[2],0.55,0.16)
-		_arc_wall(center,1.94,section[0],section[1],section[2],0.45,0.12)
-	_arc_wall(center,3.66,205,320,-0.8,0.48,0.16)
-	_wall(Vector2(7.65,4),Vector2(7.65,7.8),-0.8,0.65)
-	_wall(Vector2(2.8,7.79),Vector2(7.65,7.79),-0.8,0.65)
+	for section in [[&"gallery_A",100.0,200.0,0.35],[&"gallery_B",205.0+gap+5.0,286.0,0.8],[&"gallery_C",291.0+gap+5.0,365.0,1.25]]:
+		_begin_section(section[0], section[3])
+		# A and C face the camera; the distant B parapets retain their height.
+		var front: bool = section[0] != &"gallery_B"
+		_arc_wall(center,3.66,section[1],section[2],section[3],0.25 if front else 0.55,0.16)
+		_arc_wall(center,1.94,section[1],section[2],section[3],0.25 if front else 0.45,0.12)
+	_active_section = &""
+	_arc_wall(center,3.66,205,320,-0.8,0.25,0.16)
+	_wall(Vector2(7.65,4),Vector2(7.65,7.8),-0.8,0.25)
+	_wall(Vector2(2.8,7.79),Vector2(7.65,7.79),-0.8,0.25)
+	_begin_section(&"gallery_A", 0.35)
 	_rib(Vector3(1.3,0.35,1.6),Vector3(0.75,0,0.66).normalized(),2.9,1.75)
 	# Keep the footing outside C's new landing area after widening the route.
 	var upper_rib := _radial(center,3.8,330.0)
+	_begin_section(&"gallery_C", 1.25)
 	_rib(Vector3(upper_rib.x,1.25,upper_rib.y),Vector3(3.9-upper_rib.x,0,3.9-upper_rib.y).normalized(),2.5,1.1)
+	_active_section = &""
 	# Broad masonry footings on the inside of the shaft, outside the return route.
 	for angle in [145.0,260.0,350.0]:
 		var p := _radial(center,1.5,angle)

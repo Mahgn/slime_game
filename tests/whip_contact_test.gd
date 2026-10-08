@@ -550,7 +550,7 @@ func _get_whip(player: SlimeController) -> SlimeWhipVisual:
 
 
 func _force_variant(player: SlimeController, variant: int) -> void:
-	(player as SlimeIsometricController).pointer = player.camera.unproject_position(player.global_position + Vector3.FORWARD * 3.0 + Vector3.UP * 0.55)
+	player.controls.pointer = player.presentation.camera.unproject_position(player.global_position + Vector3.FORWARD * 3.0 + Vector3.UP * 0.55)
 	player._whip_variants_left.clear()
 	player._whip_variants_left.append(variant)
 

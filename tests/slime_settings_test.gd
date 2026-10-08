@@ -263,30 +263,43 @@ func _check_ambience_pause() -> bool:
 	await get_tree().create_timer(0.12, true).timeout
 	_ambient_status("after_resume", player)
 	var after := player.get_playback_position()
+	var loop_length := player.stream.get_length()
+	var loop_started_usec := Time.get_ticks_usec()
 	await get_tree().create_timer(10.2, true).timeout
 	_ambient_status("after_loop", player)
 	var loop_position := player.get_playback_position()
+	var elapsed := float(Time.get_ticks_usec() - loop_started_usec) / 1000000.0
+	if loop_length <= 0.0:
+		return false
+	var expected := fposmod(after + elapsed, loop_length)
+	# Compare circular positions: values near 0 and the loop end are adjacent.
+	var position_error := absf(wrapf(loop_position - expected, -loop_length * 0.5, loop_length * 0.5))
+	print("AMBIENCE_LOOP elapsed=%.4f length=%.4f expected=%.4f actual=%.4f error=%.4f" % [
+		elapsed, loop_length, expected, loop_position, position_error
+	])
 	return (
 		started_playing
 		and before > 0.0
 		and player.playing
 		and absf(during - before) < 0.035
 		and after > during + 0.045
-		and loop_position > 0.0
-		and loop_position < 1.0
+		and elapsed >= loop_length
+		and loop_position >= 0.0
+		and loop_position < loop_length
+		and position_error < 0.2
 	)
 
 
 func _check_mouse_input() -> bool:
-	var player := (load("res://scenes/player/slime_player.tscn") as PackedScene).instantiate() as SlimeIsometricController
+	var player := (load("res://scenes/player/slime_player.tscn") as PackedScene).instantiate() as SlimeController
 	get_tree().root.add_child(player)
 	await get_tree().process_frame
-	var before := player.camera.global_basis
+	var before := player.presentation.camera.global_basis
 	var motion := InputEventMouseMotion.new()
 	motion.position = Vector2(250, 175)
 	motion.relative = Vector2(20, 10)
-	player._input(motion)
-	var correct := player.pointer == motion.position and player.camera.global_basis.is_equal_approx(before)
+	player.controls._input(motion)
+	var correct := player.controls.pointer == motion.position and player.presentation.camera.global_basis.is_equal_approx(before)
 	correct = correct and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE
 	player.queue_free()
 	await get_tree().process_frame

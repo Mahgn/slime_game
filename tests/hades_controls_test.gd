@@ -12,7 +12,7 @@ var assertions := 0
 var ticks := 60
 var samples: Array[Dictionary] = []
 var fixture: Node3D
-var player: SlimeIsometricController
+var player: SlimeController
 
 
 func _initialize() -> void:
@@ -31,7 +31,7 @@ func _run() -> void:
 	fixture.set_meta(&"isometric_dressing_owned", true)
 	root.add_child(fixture)
 	_box("Floor", Vector3(0, -0.2, 0), Vector3(40, 0.4, 40))
-	player = PLAYER.instantiate() as SlimeIsometricController
+	player = PLAYER.instantiate() as SlimeController
 	fixture.add_child(player)
 	await _frames(6)
 	for label: String in DIRECTIONS:
@@ -53,9 +53,9 @@ func _run() -> void:
 		reverse_ticks += 1
 	_check(float(reverse_ticks) / ticks <= 0.20, "opposite input reaches full speed within 0.20 s")
 	await _reset()
-	var camera_basis := player.camera.global_basis
+	var camera_basis := player.presentation.camera.global_basis
 	player.grant_ability(&"sticky_spit")
-	player.pointer = player.camera.unproject_position(Vector3(0, 0.65, -5))
+	player.controls.pointer = player.presentation.camera.unproject_position(Vector3(0, 0.65, -5))
 	var shots: Array[Vector3] = []
 	player.projectile_requested.connect(func(_origin: Vector3, direction: Vector3, _damage: int, _speed: float, _range: float, _key: String, _slow: float, _seconds: float) -> void: shots.append(direction))
 	_set_axes(Vector2(-1, 1))
@@ -63,12 +63,12 @@ func _run() -> void:
 	await _frames(1)
 	Input.action_release(&"ability_slot_1")
 	var attack_direction := player._action_direction
-	player.pointer = player.camera.unproject_position(Vector3(5, 0.65, 0))
+	player.controls.pointer = player.presentation.camera.unproject_position(Vector3(5, 0.65, 0))
 	await _frames(int(ticks * 0.25))
 	_check(shots.size() == 1 and shots[0].dot(Vector3.FORWARD) > 0.95, "spit aims at cursor while moving away")
 	_check(attack_direction.dot(player._action_direction) > 0.999, "started attack keeps its direction after cursor moves")
 	_check(player.velocity.z > 0 and player.velocity.length() > 3.0, "movement remains independent during attack")
-	_check(player.camera.global_basis.is_equal_approx(camera_basis), "movement and aiming do not turn camera")
+	_check(player.presentation.camera.global_basis.is_equal_approx(camera_basis), "movement and aiming do not turn camera")
 	var paused_position := player.global_position
 	var cooldown := player.cooldown_remaining(&"sticky_spit")
 	player.clear_action_buffer()
@@ -103,7 +103,7 @@ func _direction_trial(label: String, axes: Vector2) -> void:
 		acceleration_ticks += 1
 	await _frames(ticks / 4)
 	var speed := Vector2(player.velocity.x, player.velocity.z).length()
-	var displacement := player.camera.unproject_position(player.global_position) - player.camera.unproject_position(start)
+	var displacement := player.presentation.camera.unproject_position(player.global_position) - player.presentation.camera.unproject_position(start)
 	_check(displacement.normalized().dot(axes.normalized()) > 0.96, label + " projects in the requested screen direction")
 	_check(absf(speed - 5.2) < 0.01, label + " world speed remains 5.2 m/s")
 	_check(float(acceleration_ticks) / ticks <= 0.105, label + " reaches full speed within 0.105 s")

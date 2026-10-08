@@ -45,19 +45,19 @@ func _run() -> void:
 	roof_visual.mesh = roof_mesh
 	roof.add_child(roof_visual)
 	fixture.add_child(roof)
-	var player := PLAYER.instantiate() as SlimeIsometricController
+	var player := PLAYER.instantiate() as SlimeController
 	player.position = Vector3(0, 0.05, 0)
 	fixture.add_child(player)
 	var combat := preload("res://scripts/combat/combat_runtime.gd").new()
 	fixture.add_child(combat)
 	combat.bind_player(player)
 	await _frames(8)
-	_check(player.camera.projection == Camera3D.PROJECTION_ORTHOGONAL, "orthographic camera")
+	_check(player.presentation.camera.projection == Camera3D.PROJECTION_ORTHOGONAL, "orthographic camera")
 	var stable_camera := true
 	for sample in 4:
 		await physics_frame
 		await process_frame
-		var offset := player.camera.global_position - (player.global_position + Vector3.UP * 0.45)
+		var offset := player.presentation.camera.global_position - (player.global_position + Vector3.UP * 0.45)
 		stable_camera = stable_camera and offset.distance_to(Vector3(12.0, 13.9, 12.0)) < 0.1
 	_check(stable_camera, "camera stays in the isometric position between physics and rendering")
 	_check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "free pointer")
@@ -68,14 +68,14 @@ func _run() -> void:
 	upper_enemy.set_physics_process(false)
 	player.presentation._update_occlusion()
 	_check(not upper_enemy.visible and upper_enemy.collision_layer != 0, "upper enemy hidden without disabling combat collision")
-	player.pointer = player.camera.unproject_position(upper_enemy.global_position + Vector3.UP * 0.45)
-	_check(is_equal_approx(player._get_camera_aim_point().y, player.global_position.y + player._combat_origin_height()), "cursor ignores hidden upper enemy")
+	player.controls.pointer = player.presentation.camera.unproject_position(upper_enemy.global_position + Vector3.UP * 0.45)
+	_check(is_equal_approx(player.controls.get_aim_point().y, player.global_position.y + player._combat_origin_height()), "cursor ignores hidden upper enemy")
 	upper_enemy.global_position = Vector3(4, 0.05, 0)
 	player.presentation._update_occlusion()
 	_check(upper_enemy.visible, "enemy visibility restored on current floor")
 	upper_enemy.queue_free()
 	await _frames(2)
-	var basis := player.camera.global_basis
+	var basis := player.presentation.camera.global_basis
 	var initial := player.global_position
 	Input.action_press(&"move_right")
 	await _frames(24)
@@ -95,13 +95,13 @@ func _run() -> void:
 	motion.relative = Vector2(100, -40)
 	Input.parse_input_event(motion)
 	await _frames(2)
-	_check(player.camera.global_basis.is_equal_approx(basis), "pointer does not rotate camera")
+	_check(player.presentation.camera.global_basis.is_equal_approx(basis), "pointer does not rotate camera")
 	var wheel := InputEventMouseButton.new()
 	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
 	wheel.pressed = true
 	Input.parse_input_event(wheel)
 	await _frames(20)
-	_check(player.camera.size < 12.4, "mouse wheel zoom")
+	_check(player.presentation.camera.size < 12.4, "mouse wheel zoom")
 	player.global_position = Vector3.ZERO
 	player.velocity = Vector3.ZERO
 	await _frames(10)
@@ -115,8 +115,8 @@ func _run() -> void:
 		events["died"] = true
 		drop.name = "DroppedAbility")
 	await _frames(4)
-	player.pointer = player.camera.unproject_position(enemy.global_position + Vector3.UP * 0.45)
-	var aim := player._get_camera_aim_point()
+	player.controls.pointer = player.presentation.camera.unproject_position(enemy.global_position + Vector3.UP * 0.45)
+	var aim := player.controls.get_aim_point()
 	_check(Vector2(aim.x, aim.z).distance_to(Vector2(enemy.position.x, enemy.position.z)) < 0.2, "cursor picks enemy")
 	_check(player.request_action(&"slime_whip"), "whip begins toward cursor")
 	await _frames(50)
@@ -138,7 +138,7 @@ func _run() -> void:
 	combat.bind_enemy(target)
 	player.projectile_requested.connect(func(_origin: Vector3, _direction: Vector3, _damage: int, _speed: float, _max_range: float, _key: String, _slow: float, _seconds: float) -> void: shots += 1)
 	await _frames(4)
-	player.pointer = player.camera.unproject_position(target.global_position + Vector3.UP * 0.45)
+	player.controls.pointer = player.presentation.camera.unproject_position(target.global_position + Vector3.UP * 0.45)
 	Input.action_press(&"ability_slot_1")
 	await _frames(45)
 	Input.action_release(&"ability_slot_1")

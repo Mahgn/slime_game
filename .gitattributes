@@ -1,0 +1,3 @@
+run_isometric.cmd text eol=crlf
+run_keepers.cmd text eol=crlf
+run_keepers_route.cmd text eol=crlf

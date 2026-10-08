@@ -1,8 +1,13 @@
 extends Node3D
+class_name SlimeIsometricPresentation
 
 const OFFSET := Vector3(12.0, 13.9, 12.0)
+const SILHOUETTE_SHADER := preload("res://shaders/isometric/occluded_silhouette.gdshader")
+const POSE_PARAMETERS := ["gel_time", "gel_energy", "gel_motion", "crawl_phase", "crawl_amount"]
 
-var player: SlimeController
+@onready var player: SlimeController = get_parent()
+@onready var camera: Camera3D = $Camera3D
+
 var zoom_target := 13.0
 var center := Vector3.ZERO
 var occluders: Array[MeshInstance3D] = []
@@ -12,6 +17,10 @@ var reticle: MeshInstance3D
 var follow_ring: MeshInstance3D
 var occlusion_clock := 0.0
 var floor_height := 0.0
+var room_cutaway: SlimeRoomCutaway
+var silhouette: MeshInstance3D
+var _hero_visual: MeshInstance3D
+var _silhouette_material: ShaderMaterial
 
 
 func _ready() -> void:
@@ -20,6 +29,7 @@ func _ready() -> void:
 	floor_height = player.global_position.y
 	_update_camera(0.0)
 	call_deferred("_collect_occluders")
+	call_deferred("_build_silhouette")
 	reticle = _ring(0.16, 0.20, Color("e8c68c"))
 	reticle.name = "CursorTarget"
 	reticle.set_as_top_level(true)
@@ -33,11 +43,16 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	floor_height = _ground_height(player.global_position)
 	_update_camera(delta)
+	if is_instance_valid(room_cutaway):
+		room_cutaway.update_view(player, camera, delta)
+	var trail_material := player._ground_trail.material_override as ShaderMaterial
+	trail_material.set_shader_parameter("upper_floor_fade", room_cutaway.get_reveal_amount() if is_instance_valid(room_cutaway) else 0.0)
+	_update_silhouette()
 	reticle.visible = player.health > 0
 	if player.get_parent().has_meta(&"isometric_exploration"):
 		reticle.visible = false
 		follow_ring.visible = false
-	reticle.global_position = player._get_camera_aim_point()
+	reticle.global_position = player.controls.get_aim_point()
 	reticle.global_position.y = _ground_height(reticle.global_position) + 0.03
 	follow_ring.global_position = Vector3(player.global_position.x, floor_height + 0.025, player.global_position.z)
 	occlusion_clock -= delta
@@ -56,9 +71,35 @@ func _update_camera(delta: float) -> void:
 		center = wanted
 	else:
 		center = center.lerp(wanted, 1.0 - exp(-delta * 9.0))
-	player.camera.global_position = center + OFFSET
-	player.camera.look_at(center)
-	player.camera.size = lerpf(player.camera.size, zoom_target, 1.0 - exp(-delta * 12.0))
+	camera.global_position = center + OFFSET
+	camera.look_at(center)
+	camera.size = lerpf(camera.size, zoom_target, 1.0 - exp(-delta * 12.0))
+
+
+func _build_silhouette() -> void:
+	_hero_visual = player.get_node("VisualRoot/SlimeHeroModelV5") as MeshInstance3D
+	# Only the body surface: eyes and highlights should not show through stone.
+	var body := ArrayMesh.new()
+	body.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _hero_visual.mesh.surface_get_arrays(0))
+	silhouette = MeshInstance3D.new()
+	silhouette.name = "OccludedSilhouette"
+	silhouette.mesh = body
+	silhouette.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_silhouette_material = ShaderMaterial.new()
+	_silhouette_material.shader = SILHOUETTE_SHADER
+	_silhouette_material.render_priority = 10
+	silhouette.material_override = _silhouette_material
+	_hero_visual.add_child(silhouette)
+	_update_silhouette()
+
+
+func _update_silhouette() -> void:
+	if not is_instance_valid(silhouette):
+		return
+	var source := _hero_visual.get_surface_override_material(0) as ShaderMaterial
+	for parameter in POSE_PARAMETERS:
+		_silhouette_material.set_shader_parameter(parameter, source.get_shader_parameter(parameter))
+	_silhouette_material.set_shader_parameter("silhouette_opacity", 0.72 if player.health > 0 else 0.0)
 
 
 func _belongs_to_actor(node: Node) -> bool:
@@ -71,6 +112,9 @@ func _belongs_to_actor(node: Node) -> bool:
 
 
 func _update_occlusion() -> void:
+	if is_instance_valid(room_cutaway):
+		room_cutaway.update_view(player, camera)
+		return
 	for mesh in hidden:
 		if is_instance_valid(mesh) and mesh.is_inside_tree():
 			mesh.show()
@@ -101,11 +145,12 @@ func _update_occlusion() -> void:
 			mesh.hide()
 			hidden.append(mesh)
 			continue
-		var from := mesh.to_local(player.camera.global_position)
 		var blocked := false
 		for target in targets:
 			for offset in [Vector3.ZERO, Vector3(0.55, 0, 0), Vector3(-0.55, 0, 0), Vector3(0, 0, 0.55), Vector3(0.55, 0.35, 0), Vector3(-0.55, 0.35, 0), Vector3(0, 0.35, 0.55)]:
-				var to := mesh.to_local(target + offset)
+				var point: Vector3 = target + offset
+				var from := mesh.to_local(point + camera.global_basis.z * camera.far)
+				var to := mesh.to_local(point)
 				if mesh.get_aabb().intersects_segment(from, to) != null:
 					blocked = true
 					break

@@ -5,7 +5,7 @@ class_name SlimeLevelWorkspace
 const SPAWN := Vector3(0, 0.05, 0)
 const INPUT_SETUP = preload("res://scripts/input_setup.gd")
 
-@onready var player: SlimeIsometricController = $SlimePlayer
+@onready var player: SlimeController = $SlimePlayer
 
 var combat: SlimeCombatRuntime
 var _pause_panel: SlimePauseMenu
@@ -17,7 +17,7 @@ func _ready() -> void:
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	player.presentation.zoom_target = 10.0
-	player.camera.size = 10.0
+	player.presentation.camera.size = 10.0
 	combat = SlimeCombatRuntime.new()
 	combat.name = "CombatRuntime"
 	add_child(combat)
