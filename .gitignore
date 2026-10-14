@@ -1,4 +1,6 @@
 .godot/
+.godot-xdg/
+__pycache__/
 output/
 build/
 *.log

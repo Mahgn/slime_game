@@ -1,6 +1,7 @@
 extends Control
 
-const START_SCENE := "res://scenes/opening/opening_route.tscn"
+const START_SCENE := "res://scenes/dungeon/dungeon_route.tscn"
+const OPENING_SCENE := "res://scenes/opening/opening_route.tscn"
 const KEEPERS_SCENE := "res://scenes/keepers/keepers_level.tscn"
 const KEEPERS_RUN := "res://scenes/keepers/keepers_facility.tscn"
 
@@ -33,6 +34,8 @@ func _close_settings() -> void:
 
 
 func _start_game() -> void:
+	get_tree().set_meta(&"dungeon_attempt_index",0)
+	get_tree().set_meta(&"dungeon_known_regions",[])
 	_open_level(START_SCENE)
 
 
@@ -88,6 +91,9 @@ func _build_ui() -> void:
 	var play := _button(box, "Играть")
 	play.name = "PlayButton"
 	play.pressed.connect(_start_game)
+	var opening := _button(box, "Вступительные комнаты")
+	opening.name = "OpeningRoomsButton"
+	opening.pressed.connect(_open_level.bind(OPENING_SCENE))
 	var run := _button(box, "Путь смотрителя · новый корпус")
 	run.name = "KeepersRunButton"
 	run.pressed.connect(_open_level.bind(KEEPERS_RUN))

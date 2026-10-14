@@ -34,7 +34,7 @@ func _run() -> void:
 	for button in menu.find_children("*", "Button", true, false):
 		if button.is_visible_in_tree():
 			captions.append(button.text)
-	_check(captions == ["Играть", "Путь смотрителя · новый корпус", "Котельная смотрителя", "Настройки", "Выход"], "menu exposes three routes, settings and exit")
+	_check(captions == ["Играть", "Вступительные комнаты", "Путь смотрителя · новый корпус", "Котельная смотрителя", "Настройки", "Выход"], "menu exposes dungeon, retained routes, settings and exit")
 	var settings_button := menu.find_child("SettingsButton", true, false) as Button
 	settings_button.pressed.emit()
 	await _frames(2)
@@ -104,7 +104,10 @@ func _check_play_entry(menu: Control, checkpoint_before: String) -> void:
 		return
 	var hero := workspace.player
 	_check(hero.is_on_floor() and hero.health == SlimeController.MAX_HEALTH and hero.learned_abilities.is_empty(), "Play starts a fresh grounded hero without restoring old progression")
-	_check(get_nodes_in_group(&"enemies").is_empty(), "starting scene has no old enemies")
+	_check(workspace is SlimeKeepersWorld and workspace.scene_file_path == "res://scenes/dungeon/dungeon_route.tscn" and not get_nodes_in_group(&"enemies").is_empty(), "Play starts the ecosystem with its new population")
+	# This fixture isolates menu/input/lifecycle; dungeon combat has its own checks.
+	for enemy: Node in get_nodes_in_group(&"enemies"):
+		enemy.set_physics_process(false)
 	var start := hero.global_position
 	Input.action_press(&"move_right")
 	await _frames(18)

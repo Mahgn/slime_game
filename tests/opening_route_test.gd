@@ -34,7 +34,7 @@ func _run() -> void:
 	change_scene_to_file("res://scenes/launch.tscn")
 	await _frames(8)
 	var menu := current_scene as Control
-	(menu.find_child("PlayButton",true,false) as Button).pressed.emit()
+	(menu.find_child("OpeningRoomsButton",true,false) as Button).pressed.emit()
 	await _frames(12)
 	route = current_scene as SlimeOpeningRoute
 	_check(is_instance_valid(route),"Play opens the new route")

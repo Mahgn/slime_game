@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_route.gd" id="1_baga4"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_layout.gd" id="2_nnk3a"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_geometry.gd" id="3_mtoxa"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_combat.gd" id="4_2sq8p"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_hud.gd" id="5_bd1g6"]
+[ext_resource type="PackedScene" path="res://scenes/player/slime_player.tscn" id="6_5khty"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_player.gd" id="7_d7t4b"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.07, 0.09, 0.1, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.52, 0.62, 0.67, 1)
+ambient_light_energy = 0.42
+
+[node name="SlimeDungeon" type="Node3D" unique_id=1036968167]
+script = ExtResource("1_baga4")
+layout_script = ExtResource("2_nnk3a")
+geometry_script = ExtResource("3_mtoxa")
+combat_script = ExtResource("4_2sq8p")
+hud_script = ExtResource("5_bd1g6")
+
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=715987182]
+environment = SubResource("Environment")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="." unique_id=1450727874]
+transform = Transform3D(0.8525245, 0.42516193, -0.30403835, 0, 0.5816831, 0.8134155, 0.52268726, -0.6934567, 0.4958991, 0, 0, 0)
+light_color = Color(0.85, 0.92, 1, 1)
+light_energy = 0.65
+shadow_enabled = true
+directional_shadow_max_distance = 45.0
+
+[node name="SlimePlayer" type="CharacterBody3D" parent="." unique_id=1408596042 instance=ExtResource("6_5khty")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.045, 16)
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("7_d7t4b")

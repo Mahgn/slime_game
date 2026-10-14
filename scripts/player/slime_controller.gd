@@ -301,7 +301,7 @@ func _process(delta: float) -> void:
 	if _landing_pulse > 0.0:
 		target_scale = Vector3(1.12, 0.80, 1.12)
 
-	if _action == &"sticky_spit" and _phase == &"preparation":
+	if _action in [&"sticky_spit", &"acid_spit"] and _phase == &"preparation":
 		target_scale = Vector3(1.12, 0.90, 1.12)
 	elif _action == &"slime_spikes" and _phase == &"preparation":
 		target_scale = Vector3(1.16, 0.84, 1.16)
@@ -430,7 +430,7 @@ func request_action(action_id: StringName) -> bool:
 		&"slime_whip":
 			_choose_whip_variant()
 			_phase_left = SlimeWhipVisual.PREPARATION_SECONDS
-		&"sticky_spit":
+		&"sticky_spit", &"acid_spit":
 			_phase_left = 0.18
 		&"slime_spikes":
 			_phase_left = 0.35
@@ -471,8 +471,8 @@ func _advance_action(delta: float) -> void:
 				&"slime_whip":
 					_whip_visual.set_phase(&"active", _phase_left, _whip_variant)
 					_do_whip_hit()
-				&"sticky_spit":
-					_cooldowns[_action] = ABILITY.player_cooldown
+				&"sticky_spit", &"acid_spit":
+					_cooldowns[_action] = get_ability_definition(_action).player_cooldown
 					_release_spit()
 				&"slime_spikes":
 					_cooldowns[_action] = SPIKES.player_cooldown
@@ -519,11 +519,12 @@ func _do_whip_hit() -> void:
 
 
 func _release_spit() -> void:
+	var definition: AbilityDefinition = get_ability_definition(_action)
 	var origin := global_position + Vector3(0.0, _combat_origin_height(), 0.0) + _action_direction * 0.5
 	var direction := (_action_aim_point - origin).normalized()
 	if direction.length_squared() < 0.9:
 		direction = _action_direction
-	projectile_requested.emit(origin, direction, ABILITY.player_damage, ABILITY.player_projectile_speed, ABILITY.player_projectile_range, _cast_key, ABILITY.slow_factor, ABILITY.slow_seconds)
+	projectile_requested.emit(origin, direction, definition.player_damage, definition.player_projectile_speed, definition.player_projectile_range, _cast_key, definition.slow_factor, definition.slow_seconds)
 
 
 func cooldown_remaining(ability_id: StringName) -> float:
@@ -580,7 +581,7 @@ func _finish_death() -> void:
 	died.emit()
 
 func grant_ability(ability_id: StringName) -> bool:
-	if not KNOWN_ABILITIES.has(ability_id) or learned_abilities.has(ability_id):
+	if not can_absorb_ability(ability_id):
 		return false
 	learned_abilities[ability_id] = true
 	if equipped_ability == &"":
@@ -596,6 +597,21 @@ func has_learned(ability_id: StringName) -> bool:
 	return learned_abilities.has(ability_id)
 
 
+func get_known_abilities() -> Array[StringName]:
+	return KNOWN_ABILITIES
+
+
+func can_absorb_ability(ability_id: StringName) -> bool:
+	return get_known_abilities().has(ability_id) and not has_learned(ability_id)
+
+
+func get_ability_definition(ability_id: StringName) -> AbilityDefinition:
+	for definition: AbilityDefinition in [ABILITY, SPIKES, SHELL]:
+		if definition.ability_id == ability_id:
+			return definition
+	return null
+
+
 func get_slot_ability(slot: int) -> StringName:
 	if slot == 1:
 		return equipped_ability
@@ -608,7 +624,7 @@ func unlock_second_slot() -> bool:
 	if unlocked_slots >= 2:
 		return false
 	unlocked_slots = 2
-	for ability_id: StringName in KNOWN_ABILITIES:
+	for ability_id: StringName in get_known_abilities():
 		if learned_abilities.has(ability_id) and ability_id != equipped_ability:
 			second_slot_ability = ability_id
 			break
@@ -666,7 +682,7 @@ func _update_absorption(delta: float) -> void:
 	if _absorb_elapsed >= ABSORB_SECONDS:
 		var source_to_claim := _absorb_source
 		var ability_id: StringName = source_to_claim.get("ability_id")
-		if KNOWN_ABILITIES.has(ability_id) and not learned_abilities.has(ability_id) and source_to_claim.call("claim"):
+		if can_absorb_ability(ability_id) and source_to_claim.call("claim"):
 			grant_ability(ability_id)
 		cancel_absorb()
 
@@ -679,7 +695,7 @@ func _find_absorb_source() -> Node3D:
 		if not is_instance_valid(node) or not node is Node3D or node.call("is_claimed"):
 			continue
 		var ability_id: StringName = node.get("ability_id")
-		if not KNOWN_ABILITIES.has(ability_id) or learned_abilities.has(ability_id):
+		if not can_absorb_ability(ability_id):
 			continue
 		var candidate := node as Node3D
 		var distance := global_position.distance_to(candidate.global_position)

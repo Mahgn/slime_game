@@ -8,12 +8,13 @@ var playable_openings: Array[Rect2] = []
 var service_slots: Array[Rect2] = [Rect2(-0.8,-9.5,2.0,7.5),Rect2(1.35,-20.0,1.3,3.6),Rect2(-1.5,-44.0,3.0,6.0)]
 var solid_cells: Array[Rect2] = []
 var top_height := 3.4
+var outer_bounds: Rect2 = Rect2(-39.0,-79.0,68.0,108.0)
 var mesh_instance: MeshInstance3D
 
 func build(rooms: Dictionary, links: Array, wall_width: float, height: float) -> void:
 	top_height=height
-	var xs: Array[float]=[-39.0,29.0]
-	var zs: Array[float]=[-79.0,29.0]
+	var xs: Array[float]=[outer_bounds.position.x,outer_bounds.end.x]
+	var zs: Array[float]=[outer_bounds.position.y,outer_bounds.end.y]
 	for room: Dictionary in rooms.values():
 		var half: Vector2=room.half-Vector2.ONE*wall_width*0.5
 		openings.append(Rect2(Vector2(room.center.x,room.center.z)-half,half*2))

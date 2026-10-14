@@ -52,12 +52,12 @@ func _run() -> void:
 		if button.is_visible_in_tree():
 			_check(menu_bounds.encloses(button.get_global_rect()), "visible menu button fits viewport: " + button.name)
 	await _shot("menu")
-	if not _press_named(current_scene, "PlayButton"):
+	if not _press_named(current_scene, "OpeningRoomsButton"):
 		_finish(1)
 		return
 	await _frames(14)
 	var original_route := current_scene as SlimeOpeningRoute
-	_check(is_instance_valid(original_route), "main Play still opens the original three-room route")
+	_check(is_instance_valid(original_route), "separate opening button preserves the original three-room route")
 	if not is_instance_valid(original_route):
 		_finish(1)
 		return

@@ -13,6 +13,7 @@ const ENGAGE_DISTANCE := 7.0
 const RETREAT_DISTANCE := 4.0
 const AIM_LOCK_SECONDS := 0.20
 const MAX_SHOT_RANGE := 18.0
+@export var drop_ability_id: StringName = &"sticky_spit"
 
 enum Phase { IDLE, WINDUP, RECOVERY, DEAD }
 
@@ -267,5 +268,5 @@ func _die() -> void:
 	model.reparent(get_parent(), true)
 	model.play_death(global_position)
 	phase_changed.emit(self, &"dead")
-	died.emit(self, PROFILE.ability_id, global_position)
+	died.emit(self, drop_ability_id, global_position)
 	queue_free()

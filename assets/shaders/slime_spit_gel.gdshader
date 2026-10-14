@@ -2,6 +2,7 @@ shader_type spatial;
 render_mode cull_back;
 
 uniform float flow_time = 0.0;
+uniform vec4 gel_tint : source_color = vec4(1.0);
 varying float axis_position;
 
 void vertex() {
@@ -22,7 +23,7 @@ void fragment() {
 	vec3 body = mix(vec3(0.045, 0.43, 0.49), vec3(0.23, 0.79, 0.65), 0.16 + crown * 0.66);
 	body = mix(body, vec3(0.18, 0.70, 0.61), rear * 0.35);
 	float rim = pow(1.0 - max(dot(normalize(NORMAL), normalize(VIEW)), 0.0), 1.65);
-	ALBEDO = (body + vec3(0.36, 0.48, 0.40) * rim * 0.18) * 0.94;
+	ALBEDO = (body + vec3(0.36, 0.48, 0.40) * rim * 0.18) * 0.94 * gel_tint.rgb;
 	ROUGHNESS = 0.23;
 	SPECULAR = 0.62;
 	RIM = 0.20;

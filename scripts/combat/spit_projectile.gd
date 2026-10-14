@@ -319,12 +319,13 @@ func _physics_process(delta: float) -> void:
 			_spawn_player_splash(hit)
 		var damaged := false
 		var target: Object = hit["collider"]
-		if is_instance_valid(target) and target.has_method("receive_hit"):
+		damaged = _apply_environment_property(target)
+		if not damaged and is_instance_valid(target) and target.has_method("receive_hit"):
 			if target is SlimeController:
 				damaged = (target as SlimeController).receive_hit(damage, cast_key, team, direction)
 			else:
 				damaged = target.call("receive_hit", damage, cast_key, team)
-			if damaged and team == &"player" and target.has_method("apply_sticky"):
+			if damaged and target.has_method("apply_sticky"):
 				if target.has_method("set_sticky_impact"):
 					target.call("set_sticky_impact", hit["position"], hit["normal"])
 				target.call("apply_sticky", slow_factor, slow_seconds)
@@ -335,3 +336,7 @@ func _physics_process(delta: float) -> void:
 	_travelled += distance
 	if _travelled >= max_range - 0.001:
 		queue_free()
+
+
+func _apply_environment_property(_target: Object) -> bool:
+	return false

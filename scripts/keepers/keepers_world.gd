@@ -19,6 +19,8 @@ const CAMERA_SIZE := 16.0
 
 @export var layout_script: Script = LAYOUT
 @export var geometry_script: Script = WORLD_GEOMETRY
+@export var combat_script: Script = WORLD_COMBAT
+@export var hud_script: Script = WORLD_HUD
 
 var rooms: Dictionary = LAYOUT.rooms()
 var connections: Array = LAYOUT.connections()
@@ -68,7 +70,7 @@ func _ready() -> void:
 		encounters[id] = {"wave": 0, "delay": -1.0, "kills": 0}
 		if rooms[id].waves.is_empty():
 			cleared[id] = true
-	combat = WORLD_COMBAT.new()
+	combat = combat_script.new()
 	combat.name = "CombatRuntime"
 	combat.route = self
 	add_child(combat)
@@ -76,7 +78,7 @@ func _ready() -> void:
 	_build_ui()
 	get_node("HUD").get_child(0).hide()
 	get_node("HUD").get_child(1).hide()
-	hud = WORLD_HUD.new()
+	hud = hud_script.new()
 	add_child(hud)
 	hud.setup(self)
 	_bind_player()

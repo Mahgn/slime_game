@@ -12,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'output/current_validation'
 CHECKS = [
+    ('dungeon', 'dungeon_route_test'),
     ('keepers_facility', 'keepers_facility_test'),
     ('keepers_world', 'keepers_world_test'),
     ('keepers_world_ai', 'keepers_world_ai_test'),
@@ -32,9 +33,10 @@ CHECKS = [
 
 def main():
     parser = argparse.ArgumentParser(description='Запуск изометрической игры')
-    parser.add_argument('mode', choices=['game', 'editor', 'test', 'capture'])
+    parser.add_argument('mode', choices=['game', 'editor', 'test', 'capture', 'dungeon_capture'])
     parser.add_argument('--output', type=Path, default=OUTPUT, help='Каталог журналов проверок')
     parser.add_argument('--timeout', type=float, default=240, help='Лимит одной проверки в секундах')
+    parser.add_argument('--allow-known-sandbox-errors', action='store_true', help='Отдельно учитывать проверенные ошибки macOS CA и Steam editor settings в sandbox')
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error('--timeout должен быть больше нуля')
@@ -53,9 +55,14 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
 
     def run(name, command_args, checked=False):
+        godot_env = os.environ.copy()
+        for category in ('DATA', 'CONFIG', 'CACHE'):
+            local_dir = ROOT / '.godot-xdg' / category.lower()
+            local_dir.mkdir(parents=True, exist_ok=True)
+            godot_env['XDG_' + category + '_HOME'] = str(local_dir)
         command = [binary, '--path', str(ROOT), '--log-file', str(output / (name + '.engine.log')), *command_args]
         try:
-            result = subprocess.run(command, cwd=ROOT, capture_output=checked, text=True,
+            result = subprocess.run(command, cwd=ROOT, env=godot_env, capture_output=checked, text=True,
                                     encoding='utf-8', errors='replace',
                                     timeout=args.timeout if checked else None)
         except subprocess.TimeoutExpired as error:
@@ -67,7 +74,15 @@ def main():
             (output / (name + '.stdout.log')).write_text(result.stdout, encoding='utf-8')
             (output / (name + '.stderr.log')).write_text(result.stderr, encoding='utf-8')
             (output / (name + '.command.json')).write_text(json.dumps({'command': command, 'exitCode': result.returncode}, indent=2) + '\n', encoding='utf-8')
-            failed = re.search(r'SCRIPT ERROR|Parse Error|^ERROR:|^FAIL[ :]', result.stdout + result.stderr, re.M)
+            diagnostic_lines = (result.stdout + result.stderr).splitlines()
+            environment_lines = []
+            if args.allow_known_sandbox_errors and sys.platform == 'darwin':
+                for line in diagnostic_lines:
+                    if line == 'ERROR: Condition "ret != noErr" is true. Returning: ""' or (name == 'import' and re.match(r'ERROR: (Cannot save file|Error saving editor settings).*/editor_data/editor_settings-4\.7\.tres', line)):
+                        environment_lines.append(line)
+            failed = re.search(r'SCRIPT ERROR|Parse Error|^ERROR:|^FAIL[ :]', '\n'.join(line for line in diagnostic_lines if line not in environment_lines), re.M)
+            if environment_lines:
+                print('KNOWN_ENVIRONMENT ' + name + ': ' + str(len(environment_lines)) + ' baseline diagnostics retained in logs', flush=True)
             print(('PASS' if result.returncode == 0 and not failed else 'FAIL') + ' ' + name, flush=True)
             for line in result.stdout.splitlines():
                 if re.search(r'RESULT|SUMMARY|BLOCKED|FAIL ', line):
@@ -90,6 +105,8 @@ def main():
         return exit_code
     if args.mode == 'capture':
         return run('capture', ['--resolution', '1280x720', '--fixed-fps', '60', '--script', 'res://tests/opening_route_test.gd', '--', '--capture'], checked=True)
+    if args.mode == 'dungeon_capture':
+        return run('dungeon-native', ['--resolution', '1280x720', '--fixed-fps', '60', '--script', 'res://tests/dungeon_route_test.gd', '--', '--capture'], checked=True)
     return run(args.mode, ['--editor'] if args.mode == 'editor' else [])
 
 

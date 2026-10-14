@@ -93,9 +93,12 @@ static func prepare(route: SlimeKeepersWorld) -> void:
 	overview.far = 250.0
 	overview.position = Vector3(60,85,45)
 	overview.look_at(Vector3(-5,0,-23))
-	# Both the first draw and the next draw complete before removing the world.
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
+	# Inactive desktop windows may stop automatic draw signals after a retry.
+	# Force both preparation draws instead of waiting forever for a frame.
+	await route.get_tree().process_frame
+	RenderingServer.force_draw()
+	await route.get_tree().process_frame
+	RenderingServer.force_draw()
 	building.free()
 	viewport.free()
 
