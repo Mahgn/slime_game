@@ -12,6 +12,11 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'output/current_validation'
 CHECKS = [
+    ('spell_presentation', 'spell_presentation_test'),
+    ('spell_aftermath', 'spell_aftermath_test'),
+    ('attack_profiles', 'attack_feedback_profiles_test'),
+    ('combat_impact', 'combat_impact_test'),
+    ('combat_camera', 'combat_camera_test'),
     ('dungeon', 'dungeon_route_test'),
     ('keepers_facility', 'keepers_facility_test'),
     ('keepers_world', 'keepers_world_test'),

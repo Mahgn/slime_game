@@ -17,6 +17,8 @@ var _art_kit: SlimeKeepersGeometry
 var building_crown: Node3D
 
 func build_world(rooms: Dictionary, connections: Array) -> void:
+	upper_sections.clear()
+	masonry_spans.clear()
 	super.build_world(rooms, connections)
 	cutaway.free()
 	cutaway = CUTAWAY.new()
@@ -24,6 +26,7 @@ func build_world(rooms: Dictionary, connections: Array) -> void:
 	add_child(cutaway)
 	for shell: Node3D in room_nodes.values():
 		cutaway.structural_sections.append_array(shell.upper_sections)
+	cutaway.structural_sections.append_array(upper_sections)
 	_build_surroundings(rooms, connections)
 	_art_kit = ART_KIT.new()
 	_art_kit.name = "ConnectedServiceRuns"
@@ -140,7 +143,10 @@ func _build_corridor(connection: Dictionary) -> void:
 	var a: Vector3 = connection.path[0]
 	var b: Vector3 = connection.path[-1]
 	_corridor_center = Vector2((a.x+b.x)*0.5,(a.z+b.z)*0.5)
+	var first_section := upper_sections.size()
 	super._build_corridor(connection)
+	for index in range(first_section, upper_sections.size()):
+		upper_sections[index]["room_ids"] = [String(connection.a), String(connection.b)]
 
 func _world_wall(label: String, a: Vector2, b: Vector2, _old_height: float, base_y: float = 0) -> void:
 	var direction := (b-a).normalized()
@@ -191,7 +197,8 @@ func _world_wall(label: String, a: Vector2, b: Vector2, _old_height: float, base
 	_wall_courses(lower,va,vb,base_y,WALL_HEIGHT-base_y-0.18,7 if base_y<0.5 else 5,yaw)
 	lower.finish()
 	masonry_spans.append({"lower":lower,"body":body,"label":label})
-	upper_sections.append({"node":lower,"body":body,"point":global_position+Vector3(middle.x,0,middle.y),"normal":Vector3(outward.x,0,outward.y),"base_height":base_y,"top_height":WALL_HEIGHT,"room_id":_world_id})
+	upper_sections.append({"node":lower,"body":body,"point":global_position+Vector3(middle.x,0,middle.y),"normal":Vector3(outward.x,0,outward.y),"base_height":base_y,"top_height":WALL_HEIGHT,"room_id":_world_id,
+		"visual_a":to_global(Vector3(va.x,base_y,va.y)),"visual_b":to_global(Vector3(vb.x,base_y,vb.y)),"visual_width":VISIBLE_WALL_WIDTH,"foundation_color":_wall_tone.darkened(0.16)})
 
 func _wall_courses(builder, a: Vector2, b: Vector2, bottom: float, height: float, rows: int, yaw: float) -> void:
 	var length := a.distance_to(b)

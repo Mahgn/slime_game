@@ -268,8 +268,7 @@ func _enter_room(destination: String, origin: String, retry: bool) -> void:
 	player.cancel_absorb_for_pause()
 	player.clear_action_buffer()
 	player.presentation.room_cutaway = null
-	for node in combat.get_children():
-		node.free()
+	combat.clear_transients(true)
 	if is_instance_valid(room_root):
 		room_root.free()
 	room_id = destination

@@ -5,7 +5,7 @@ const DUNGEON_PROJECTILE: Script = preload("res://scripts/dungeon/dungeon_projec
 
 func _on_action_started(action_id: StringName) -> void:
 	super._on_action_started(action_id)
-	if action_id == &"acid_spit":
+	if action_id == &"acid_spit" and player.get_impact_profile(action_id).charge_sound == null:
 		_play_audio(&"cast",player.global_position)
 
 
@@ -23,7 +23,8 @@ func _on_enemy_died(enemy: Node3D, ability_id: StringName, at: Vector3) -> void:
 
 func _on_player_projectile(origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String, slow_factor: float, slow_seconds: float) -> void:
 	_create_property_projectile(player, &"player", player._action, (player as SlimeDungeonPlayer).get_ability_level(player._action), origin, direction, damage, speed, max_range, cast_key, slow_factor, slow_seconds)
-	_play_audio(&"player_spit", origin)
+	if player.get_impact_profile(player._action).release_sound == null:
+		_play_audio(&"player_spit", origin)
 
 
 func _on_enemy_projectile(enemy: Spitter, origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String) -> void:
@@ -31,7 +32,7 @@ func _on_enemy_projectile(enemy: Spitter, origin: Vector3, direction: Vector3, d
 		return
 	var sticky: bool = enemy.drop_ability_id == &"sticky_spit"
 	_create_property_projectile(enemy, &"enemy", enemy.drop_ability_id, 1, origin, direction, damage, speed, max_range, cast_key, 0.65 if sticky else 1.0, 1.2 if sticky else 0.0)
-	_play_audio(&"enemy_spit", origin)
+	_play_spell_release(enemy.get_attack_impact_profile(), origin, &"enemy_spit")
 
 
 func _create_property_projectile(owner_body: CollisionObject3D, team: StringName, ability_id: StringName, rank: int, origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String, slow_factor: float, slow_seconds: float) -> void:
@@ -40,7 +41,12 @@ func _create_property_projectile(owner_body: CollisionObject3D, team: StringName
 	projectile.set("ability_id", ability_id)
 	projectile.set("ability_level", maxi(1, rank))
 	projectile.process_mode = Node.PROCESS_MODE_PAUSABLE
-	projectile.configure(owner_body, team, direction, speed, damage, max_range, cast_key, slow_factor, slow_seconds)
+	var profile: SlimeImpactProfile = SlimeImpactProfiles.for_ability(ability_id)
+	if owner_body is SlimeController:
+		profile = (owner_body as SlimeController).get_impact_profile(ability_id)
+	elif owner_body is Spitter:
+		profile = (owner_body as Spitter).get_attack_impact_profile()
+	projectile.configure(owner_body, team, direction, speed, damage, max_range, cast_key, slow_factor, slow_seconds, profile)
+	projectile.attack_contact.connect(_on_attack_contact)
 	add_child(projectile)
 	projectile.global_position = origin
-	projectile.resolved.connect(_on_projectile_resolved)

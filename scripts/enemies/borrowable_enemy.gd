@@ -4,6 +4,8 @@ class_name BorrowableEnemy
 signal died(source: BorrowableEnemy, ability_id: StringName, death_position: Vector3)
 signal phase_changed(source: BorrowableEnemy, phase: StringName)
 signal spikes_requested(source: BorrowableEnemy, origin: Vector3, direction: Vector3, cast_key: String)
+signal impact_received(at: Vector3, lethal: bool)
+signal attack_impact_received(at: Vector3, lethal: bool, profile: SlimeImpactProfile, direction: Vector3)
 
 const GRAVITY := 20.0
 const ARMORER_VISUAL_SCRIPT = preload("res://scripts/enemies/armorer_visual.gd")
@@ -132,6 +134,10 @@ func _attack() -> void:
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:
+	return receive_attack_hit(amount, cast_key, source_team, Vector3.ZERO, SlimeImpactProfiles.GENERIC)
+
+
+func receive_attack_hit(amount: int, cast_key: String, source_team: StringName, incoming_direction: Vector3, impact_profile: SlimeImpactProfile = null) -> bool:
 	if _phase == &"dead" or source_team != &"player" or amount <= 0 or cast_key.is_empty() or _hit_casts.has(cast_key):
 		return false
 	_hit_casts[cast_key] = true
@@ -143,8 +149,12 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool
 		else:
 			_shield.visible = false
 	if amount > 0:
+		var health_before := health
 		health = maxi(0, health - amount)
 		_hit_flash_left = 0.14
+		if health < health_before:
+			impact_received.emit(global_position + Vector3.UP * 0.65, health == 0)
+			attack_impact_received.emit(global_position + Vector3.UP * 0.65, health == 0, impact_profile if impact_profile != null else SlimeImpactProfiles.GENERIC, incoming_direction)
 	if health == 0:
 		_die()
 	return true

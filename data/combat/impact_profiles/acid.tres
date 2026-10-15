@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="SlimeImpactProfile" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/impact_profile.gd" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact_acid.wav" id="2"]
+[ext_resource type="AudioStream" path="res://assets/audio/acid_gather.wav" id="3"]
+[ext_resource type="AudioStream" path="res://assets/audio/acid_release.wav" id="4"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"acid"
+particle_style = 1
+primary_color = Color(0.58, 0.90, 0.12, 0.98)
+accent_color = Color(0.95, 1.0, 0.38, 0.98)
+burst_seconds = 0.50
+particle_speed = 1.9
+particle_size = Vector3(0.075, 0.075, 0.095)
+flash_color = Color(0.91, 1.0, 0.64, 0.98)
+flash_seconds = 0.045
+recoil_strength = 0.4
+camera_strength = 0.22
+kill_camera_strength = 0.40
+hitstop_seconds = 0.018
+kill_hitstop_seconds = 0.028
+impact_sound = ExtResource("2")
+pitch_variation = 0.04
+volume_db = -2.0
+charge_style = 1
+charge_size = 0.22
+charge_sound = ExtResource("3")
+release_sound = ExtResource("4")
+projectile_core_scale = 0.14
+trail_seconds = 0.18
+trail_width = 0.045
+trail_style = 0
+aftermath_seconds = 0.32
+aftermath_color = Color(0.64, 0.90, 0.18, 0.16)

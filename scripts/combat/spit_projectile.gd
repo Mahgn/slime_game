@@ -2,8 +2,10 @@ extends Node3D
 class_name SpitProjectile
 
 signal resolved(hit_position: Vector3, damaged_target: bool)
+signal attack_contact(at: Vector3, direction: Vector3, profile: SlimeImpactProfile, handled_by_actor: bool)
 
 const PLAYER_GEL_SHADER := preload("res://assets/shaders/slime_spit_gel.gdshader")
+const SPELL_TRAIL := preload("res://scripts/combat/projectile_spell_trail.gd")
 
 # Immutable shot geometry/materials survive individual projectile lifetimes.
 # This also avoids freeing freshly uploaded buffers during the first impact.
@@ -40,11 +42,15 @@ var max_range := 18.0
 var slow_factor := 1.0
 var slow_seconds := 0.0
 var cast_key := ""
+var impact_profile: SlimeImpactProfile
 
 var _travelled := 0.0
 var _gel_material: ShaderMaterial
 var _droplets: Array[MeshInstance3D] = []
 var _visual_age := 0.0
+var _spell_core: MeshInstance3D
+var _spell_core_scale := Vector3.ONE
+var _spell_trail: SPELL_TRAIL
 
 
 func configure(
@@ -56,7 +62,8 @@ func configure(
 	new_range: float,
 	new_cast_key: String,
 	new_slow_factor: float = 1.0,
-	new_slow_seconds: float = 0.0
+	new_slow_seconds: float = 0.0,
+	new_impact_profile: SlimeImpactProfile = null
 ) -> void:
 	owner_body = new_owner
 	team = new_team
@@ -67,6 +74,7 @@ func configure(
 	cast_key = new_cast_key
 	slow_factor = new_slow_factor
 	slow_seconds = new_slow_seconds
+	impact_profile = new_impact_profile if new_impact_profile != null else SlimeImpactProfiles.WEB
 
 
 func _ready() -> void:
@@ -83,11 +91,50 @@ func _ready() -> void:
 		_create_player_visual(visual)
 	else:
 		_create_enemy_visual(visual)
+	_create_spell_flight(visual)
+
+
+func _create_spell_flight(visual: Node3D) -> void:
+	if impact_profile == null:
+		return
+	if impact_profile.projectile_core_scale > 0.0:
+		_spell_core = MeshInstance3D.new()
+		_spell_core.name = "SpellCore"
+		var radius := impact_profile.projectile_core_scale
+		if not _sphere_meshes.has(radius):
+			var core_mesh := SphereMesh.new()
+			core_mesh.radius = radius
+			core_mesh.height = radius * 2.0
+			core_mesh.radial_segments = 12
+			core_mesh.rings = 6
+			_sphere_meshes[radius] = core_mesh
+		_spell_core.mesh = _sphere_meshes[radius]
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.render_priority = 2
+		material.albedo_color = Color(impact_profile.accent_color, 0.90)
+		_spell_core.material_override = material
+		_spell_core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_spell_core.position.z = -0.23 if team == &"player" else -0.09
+		_spell_core_scale = Vector3(0.80, 0.80, 1.15) if impact_profile.trail_style == 1 else Vector3.ONE
+		visual.add_child(_spell_core)
+		_spell_core.scale = _spell_core_scale
+	if impact_profile.trail_seconds > 0.0:
+		_spell_trail = SPELL_TRAIL.new()
+		_spell_trail.name = "SpellTrail"
+		add_child(_spell_trail)
+		_spell_trail.configure(impact_profile, global_position, direction, speed)
+		# The historical attached drops are replaced by a genuinely spatial trail.
+		for droplet in _droplets:
+			droplet.visible = false
 
 
 func _create_player_visual(visual: Node3D) -> void:
 	_gel_material = ShaderMaterial.new()
 	_gel_material.shader = PLAYER_GEL_SHADER
+	if impact_profile != null:
+		_gel_material.set_shader_parameter("gel_tint", impact_profile.primary_color)
 	var blob_mesh := _make_player_blob_mesh()
 	var body := MeshInstance3D.new()
 	body.name = "Gel"
@@ -167,17 +214,22 @@ func _update_droplets() -> void:
 
 
 func _process(delta: float) -> void:
-	if _gel_material == null:
-		return
 	_visual_age += delta
-	_gel_material.set_shader_parameter("flow_time", _visual_age)
-	_update_droplets()
+	if _gel_material != null:
+		_gel_material.set_shader_parameter("flow_time", _visual_age)
+		_update_droplets()
+	if is_instance_valid(_spell_core):
+		_spell_core.scale = _spell_core_scale * (1.0 + sin(_visual_age * 15.0) * 0.045)
+	if is_instance_valid(_spell_trail):
+		_spell_trail.advance(global_position, delta)
 
 
 func _create_enemy_visual(visual: Node3D) -> void:
-	var core := _glow_material(Color(1.0, 0.42, 0.12), 1.2)
-	var glow := _glow_material(Color(1.0, 0.27, 0.06), 0.8, 0.32)
-	var trail := _glow_material(Color(1.0, 0.6, 0.12), 0.9)
+	var primary := impact_profile.primary_color if impact_profile != null else Color(1.0, 0.42, 0.12)
+	var accent := impact_profile.accent_color if impact_profile != null else Color(1.0, 0.6, 0.12)
+	var core := _glow_material(primary, 1.2)
+	var glow := _glow_material(primary, 0.8, 0.32)
+	var trail := _glow_material(accent, 0.9)
 	_add_sphere(visual, "Glow", 0.23, Vector3.ZERO, glow)
 	_add_sphere(visual, "Core", 0.15, Vector3.ZERO, core)
 	var streak := MeshInstance3D.new()
@@ -234,13 +286,14 @@ func _spawn_player_splash(hit: Dictionary) -> void:
 	var splash := SpitSplash.new()
 	splash.name = "SlimeSpitSplash"
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.23, 0.79, 0.65, 0.78)
+	var splash_color := impact_profile.primary_color if impact_profile != null else Color(0.23, 0.79, 0.65)
+	material.albedo_color = Color(splash_color, 0.78)
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	material.roughness = 0.21
 	material.metallic = 0.0
 	material.emission_enabled = true
-	material.emission = Color(0.09, 0.35, 0.30)
+	material.emission = splash_color * 0.45
 	material.emission_energy_multiplier = 0.10
 	splash.material_override = material
 	splash.gel_material = material
@@ -319,17 +372,22 @@ func _physics_process(delta: float) -> void:
 			_spawn_player_splash(hit)
 		var damaged := false
 		var target: Object = hit["collider"]
+		var actor_feedback := target.has_signal("attack_impact_received")
+		var damage_receiver := target.has_method("receive_hit")
 		damaged = _apply_environment_property(target)
+		var environment_contact := damaged or not damage_receiver
 		if not damaged and is_instance_valid(target) and target.has_method("receive_hit"):
-			if target is SlimeController:
+			if target.has_method("receive_attack_hit"):
+				damaged = bool(target.call("receive_attack_hit", damage, cast_key, team, direction, impact_profile))
+			elif target is SlimeController:
 				damaged = (target as SlimeController).receive_hit(damage, cast_key, team, direction)
 			else:
 				damaged = target.call("receive_hit", damage, cast_key, team)
 			if damaged and target.has_method("apply_sticky"):
-				if target.has_method("set_sticky_impact"):
-					target.call("set_sticky_impact", hit["position"], hit["normal"])
 				target.call("apply_sticky", slow_factor, slow_seconds)
 		resolved.emit(global_position, damaged)
+		if environment_contact or damaged:
+			attack_contact.emit(global_position, direction, impact_profile, not environment_contact and actor_feedback)
 		queue_free()
 		return
 	global_position = next_position

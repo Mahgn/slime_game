@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="SlimeImpactProfile" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/impact_profile.gd" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact_spikes.wav" id="2"]
+[ext_resource type="AudioStream" path="res://assets/audio/spikes_gather.wav" id="3"]
+[ext_resource type="AudioStream" path="res://assets/audio/spikes_release.wav" id="4"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"spikes"
+particle_style = 3
+primary_color = Color(0.67, 0.75, 0.48, 0.98)
+accent_color = Color(0.93, 0.92, 0.68, 0.98)
+burst_seconds = 0.38
+particle_speed = 3.2
+particle_size = Vector3(0.065, 0.11, 0.07)
+flash_color = Color(1, 0.96, 0.79, 0.98)
+flash_seconds = 0.06
+recoil_strength = 1.15
+camera_strength = 0.85
+kill_camera_strength = 1.0
+hitstop_seconds = 0.055
+kill_hitstop_seconds = 0.070
+impact_sound = ExtResource("2")
+pitch_variation = 0.03
+volume_db = -1.0
+charge_style = 2
+charge_size = 0.65
+release_seconds = 0.22
+charge_sound = ExtResource("3")
+release_sound = ExtResource("4")
+aftermath_seconds = 0.16
+aftermath_color = Color(0.82, 0.81, 0.58, 0.12)

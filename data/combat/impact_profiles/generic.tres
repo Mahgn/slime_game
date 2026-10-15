@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="SlimeImpactProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/impact_profile.gd" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/hit.wav" id="2"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"generic"
+impact_sound = ExtResource("2")

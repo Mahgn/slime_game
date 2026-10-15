@@ -42,7 +42,8 @@ func get_ability_definition(ability_id: StringName) -> AbilityDefinition:
 		return _rank_definitions[ability_id] as AbilityDefinition
 	var definition: AbilityDefinition
 	if ability_id == &"sticky_spit":
-		definition = ABILITY.duplicate(true) as AbilityDefinition
+		# Rank values are local; immutable impact/audio Resources stay shared.
+		definition = ABILITY.duplicate(false) as AbilityDefinition
 		definition.description = "Замедляет врага. Удерживает открытый привод в текущем положении."
 	else:
 		definition = AbilityDefinition.new()
@@ -55,6 +56,7 @@ func get_ability_definition(ability_id: StringName) -> AbilityDefinition:
 		definition.player_projectile_range = 18.0
 		definition.slow_factor = 1.0
 		definition.slow_seconds = 0.0
+	definition.impact_profile = SlimeImpactProfiles.for_ability(ability_id)
 	var rank: int = maxi(1, get_ability_level(ability_id))
 	definition.player_damage += 3 * (rank - 1)
 	if ability_id == &"sticky_spit":

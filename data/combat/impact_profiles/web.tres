@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="SlimeImpactProfile" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/impact_profile.gd" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact_web.wav" id="2"]
+[ext_resource type="AudioStream" path="res://assets/audio/web_gather.wav" id="3"]
+[ext_resource type="AudioStream" path="res://assets/audio/web_release.wav" id="4"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"web"
+particle_style = 2
+primary_color = Color(0.81, 0.72, 0.95, 0.98)
+accent_color = Color(0.97, 0.94, 1, 0.98)
+burst_seconds = 0.65
+particle_speed = 0.85
+particle_size = Vector3(0.018, 0.018, 0.24)
+flash_color = Color(0.94, 0.88, 1, 0.98)
+flash_seconds = 0.035
+recoil_strength = 0.18
+camera_strength = 0.06
+kill_camera_strength = 0.15
+hitstop_seconds = 0.0
+kill_hitstop_seconds = 0.0
+impact_sound = ExtResource("2")
+pitch_variation = 0.03
+volume_db = -2.0
+charge_style = 1
+charge_size = 0.19
+charge_sound = ExtResource("3")
+release_sound = ExtResource("4")
+projectile_core_scale = 0.10
+trail_seconds = 0.26
+trail_width = 0.025
+trail_style = 1
+aftermath_seconds = 0.45
+aftermath_color = Color(0.80, 0.73, 0.96, 0.15)

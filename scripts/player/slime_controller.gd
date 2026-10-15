@@ -4,11 +4,13 @@ class_name SlimeController
 signal health_changed(current: int, maximum: int)
 signal died
 signal damaged
+signal attack_impact_received(at: Vector3, lethal: bool, profile: SlimeImpactProfile, direction: Vector3)
 signal ability_unlocked(ability_id: StringName)
 signal absorb_progress_changed(progress: float, source: Node3D)
 signal projectile_requested(origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String, slow_factor: float, slow_seconds: float)
 signal spikes_requested(origin: Vector3, direction: Vector3, cast_key: String)
 signal whip_hit(position: Vector3)
+signal attack_contact(at: Vector3, direction: Vector3, profile: SlimeImpactProfile, handled_by_actor: bool)
 signal action_started(action_id: StringName)
 signal info_requested(message: String)
 signal loadout_changed
@@ -88,6 +90,7 @@ var _whip_variants_left: Array[int] = []
 var _whip_variant := SlimeWhipVisual.VARIANT_RIGHT
 var _last_whip_variant := -1
 var _shell_visual: MeshInstance3D
+var spell_visual: SlimeSpellCastVisual
 var _absorb_source: Node3D
 var _absorb_elapsed := 0.0
 var _absorb_requires_release := false
@@ -112,6 +115,10 @@ func _ready() -> void:
 	_create_whip_visual()
 	hero_visual.call("setup", self, _whip_visual)
 	_create_shell_visual()
+	spell_visual = SlimeSpellCastVisual.new()
+	spell_visual.name = "SpellCastVisual"
+	spell_visual.configure(self)
+	add_child(spell_visual)
 	health_changed.emit(health, MAX_HEALTH)
 
 
@@ -448,6 +455,7 @@ func request_action(action_id: StringName) -> bool:
 	visual_root.rotation.y = atan2(-local_aim.x, -local_aim.z)
 	if action_id == &"slime_whip":
 		_whip_visual.set_phase(&"preparation", _phase_left, _whip_variant)
+	spell_visual.begin_cast(get_impact_profile(action_id), _phase_left, _action_direction)
 	action_started.emit(action_id)
 	return true
 
@@ -459,6 +467,7 @@ func _advance_action(delta: float) -> void:
 	if _phase_left > 0.0:
 		return
 	if _phase == &"preparation":
+		spell_visual.release_cast()
 		if _action == &"elastic_shell":
 			_phase = &"guard"
 			_phase_left = 1.20
@@ -499,6 +508,7 @@ func _combat_origin_height() -> float:
 
 func _do_whip_hit() -> void:
 	var origin := global_position + Vector3(0.0, _combat_origin_height(), 0.0)
+	var impact_profile := get_impact_profile(&"slime_whip")
 	for enemy: Node in get_tree().get_nodes_in_group(&"enemies") + get_tree().get_nodes_in_group(&"training_targets"):
 		if not is_instance_valid(enemy) or not enemy is Node3D or not enemy.has_method("receive_hit"):
 			continue
@@ -514,8 +524,15 @@ func _do_whip_hit() -> void:
 		wall_query.exclude = [get_rid()]
 		if not get_world_3d().direct_space_state.intersect_ray(wall_query).is_empty():
 			continue
-		if target.call("receive_hit", WHIP_DAMAGE, _cast_key, &"player"):
+		var actor_feedback := target.has_signal("attack_impact_received")
+		var did_hit: bool
+		if target.has_method("receive_attack_hit"):
+			did_hit = bool(target.call("receive_attack_hit", WHIP_DAMAGE, _cast_key, &"player", _action_direction, impact_profile))
+		else:
+			did_hit = bool(target.call("receive_hit", WHIP_DAMAGE, _cast_key, &"player"))
+		if did_hit:
 			whip_hit.emit(target_point)
+			attack_contact.emit(target_point, _action_direction, impact_profile, actor_feedback)
 
 
 func _release_spit() -> void:
@@ -532,6 +549,10 @@ func cooldown_remaining(ability_id: StringName) -> float:
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName, incoming_direction: Vector3 = Vector3.ZERO) -> bool:
+	return receive_attack_hit(amount, cast_key, source_team, incoming_direction, SlimeImpactProfiles.GENERIC)
+
+
+func receive_attack_hit(amount: int, cast_key: String, source_team: StringName, incoming_direction: Vector3, impact_profile: SlimeImpactProfile = null) -> bool:
 	if health <= 0 or source_team != &"enemy" or amount <= 0 or cast_key.is_empty() or _hurt_protection_left > 0.0:
 		return false
 	if _received_casts.has(cast_key):
@@ -542,6 +563,7 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName, incomin
 		_phase = &"recovery"
 		_phase_left = 0.20
 		_shell_visual.visible = false
+		spell_visual.play_block(get_impact_profile(&"elastic_shell"))
 		shell_blocked.emit()
 		if amount == 0:
 			return true
@@ -550,6 +572,7 @@ func receive_hit(amount: int, cast_key: String, source_team: StringName, incomin
 	_start_hit_reaction(incoming_direction)
 	cancel_absorb()
 	damaged.emit()
+	attack_impact_received.emit(global_position + Vector3.UP * 0.5, health <= 0, impact_profile if impact_profile != null else SlimeImpactProfiles.GENERIC, incoming_direction)
 	health_changed.emit(health, MAX_HEALTH)
 	if health == 0:
 		_finish_death()
@@ -563,12 +586,14 @@ func apply_environment_damage(amount: int) -> void:
 	_start_hit_reaction()
 	cancel_absorb()
 	damaged.emit()
+	attack_impact_received.emit(global_position + Vector3.UP * 0.5, health <= 0, SlimeImpactProfiles.GENERIC, Vector3.ZERO)
 	health_changed.emit(health, MAX_HEALTH)
 	if health == 0:
 		_finish_death()
 
 
 func _finish_death() -> void:
+	spell_visual.reset()
 	_action = &""
 	_phase = &""
 	_phase_left = 0.0
@@ -610,6 +635,11 @@ func get_ability_definition(ability_id: StringName) -> AbilityDefinition:
 		if definition.ability_id == ability_id:
 			return definition
 	return null
+
+
+func get_impact_profile(ability_id: StringName) -> SlimeImpactProfile:
+	var definition := get_ability_definition(ability_id)
+	return definition.impact_profile if definition != null and definition.impact_profile != null else SlimeImpactProfiles.for_ability(ability_id)
 
 
 func get_slot_ability(slot: int) -> StringName:

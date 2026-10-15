@@ -2,6 +2,7 @@ extends Node3D
 class_name SpikeLine
 
 signal hit_target(at: Vector3, empowered: bool)
+signal attack_contact(at: Vector3, direction: Vector3, profile: SlimeImpactProfile, handled_by_actor: bool)
 
 const SEGMENTS := 5
 const STEP := 1.0
@@ -15,6 +16,7 @@ var team: StringName = &"player"
 var direction := Vector3.FORWARD
 var cast_key := ""
 var damage := 22
+var impact_profile: SlimeImpactProfile
 
 var _lifetime_left := LIFETIME
 var _visual_age := 0.0
@@ -25,15 +27,17 @@ var _combo_centers: Array[Vector3] = []
 var _player_visual: Node3D
 var _player_material: ShaderMaterial
 var _player_ridges: Array[MeshInstance3D] = []
+var _ridge_rise_delays: Array[float] = []
 
 
-func configure(new_owner: CollisionObject3D, new_team: StringName, new_origin: Vector3, new_direction: Vector3, new_cast_key: String, new_damage: int) -> void:
+func configure(new_owner: CollisionObject3D, new_team: StringName, new_origin: Vector3, new_direction: Vector3, new_cast_key: String, new_damage: int, new_impact_profile: SlimeImpactProfile = null) -> void:
 	owner_body = new_owner
 	team = new_team
 	_origin = new_origin
 	direction = Vector3(new_direction.x, 0.0, new_direction.z).normalized()
 	cast_key = new_cast_key
 	damage = new_damage
+	impact_profile = new_impact_profile if new_impact_profile != null else SlimeImpactProfiles.SPIKES
 
 
 func _ready() -> void:
@@ -54,6 +58,7 @@ func build_line() -> int:
 		_player_centers.clear()
 		_combo_centers.clear()
 		_player_ridges.clear()
+		_ridge_rise_delays.clear()
 		if is_instance_valid(_player_visual):
 			remove_child(_player_visual)
 			_player_visual.queue_free()
@@ -102,7 +107,14 @@ func _hit_targets(center: Vector3) -> void:
 			continue
 		var sticky := team == &"player" and target.has_method("get_sticky_time_left") and float(target.call("get_sticky_time_left")) > 0.0
 		var hit_damage := 33 if sticky else damage
-		var did_hit := (target as SlimeController).receive_hit(hit_damage, cast_key, team, (target.global_position - _origin).normalized()) if target is SlimeController else bool(target.call("receive_hit", hit_damage, cast_key, team))
+		var actor_feedback := target.has_signal("attack_impact_received")
+		var did_hit: bool
+		if target.has_method("receive_attack_hit"):
+			did_hit = bool(target.call("receive_attack_hit", hit_damage, cast_key, team, direction, impact_profile))
+		elif target is SlimeController:
+			did_hit = (target as SlimeController).receive_hit(hit_damage, cast_key, team, direction)
+		else:
+			did_hit = bool(target.call("receive_hit", hit_damage, cast_key, team))
 		if did_hit:
 			_affected[target.get_instance_id()] = true
 			if sticky and is_instance_valid(target) and target.has_method("clear_sticky"):
@@ -110,6 +122,7 @@ func _hit_targets(center: Vector3) -> void:
 			if sticky:
 				_add_combo_splash(center)
 			hit_target.emit(center, sticky)
+			attack_contact.emit(center, direction, impact_profile, actor_feedback)
 
 
 func _add_combo_splash(center: Vector3) -> void:
@@ -309,6 +322,9 @@ func _add_player_ridge(center: Vector3, axis: Vector3, height: float, length_rad
 	ridge.scale.y = 0.20
 	_player_visual.add_child(ridge)
 	_player_ridges.append(ridge)
+	# Hit resolution above stays immediate. Only the crest's extra height travels
+	# outward; its initial 20% silhouette already marks the complete hit line.
+	_ridge_rise_delays.append(clampf((center - _origin).dot(direction) - STEP, 0.0, float(SEGMENTS - 1) * STEP) * 0.01)
 
 
 func _make_player_ridge_mesh(axis: Vector3, height: float, length_radius: float, side_radius: float, forward_curl: float, side_curl: float) -> ArrayMesh:
@@ -368,11 +384,13 @@ func _make_mesh(points: PackedVector3Array, normals: PackedVector3Array, colors:
 
 func _animate_player_visual() -> void:
 	var elapsed := clampf(_visual_age, 0.0, PLAYER_VISUAL_LIFETIME)
-	var rise := smoothstep(0.0, 0.11, elapsed)
 	var settle := smoothstep(0.94, PLAYER_VISUAL_LIFETIME, elapsed)
 	for index in _player_ridges.size():
 		var ridge := _player_ridges[index]
-		var wobble := 0.06 * sin(elapsed * (27.0 + float(index % 4) * 2.0)) * exp(-elapsed * 10.0)
+		var local_age := maxf(0.0, elapsed - _ridge_rise_delays[index])
+		var rise := smoothstep(0.0, 0.11, local_age)
+		var follow_through := maxf(0.0, local_age - 0.11)
+		var wobble := 0.075 * sin(follow_through * 30.0) * exp(-follow_through * 11.0) * rise
 		ridge.scale = Vector3(1.10 - rise * 0.10, (0.20 + rise * 0.80 + wobble) * (1.0 - settle * 0.90), 1.10 - rise * 0.10)
 	_player_material.set_shader_parameter("fade", 1.0 - smoothstep(1.18, PLAYER_VISUAL_LIFETIME, elapsed))
 

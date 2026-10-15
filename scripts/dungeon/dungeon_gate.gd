@@ -34,8 +34,13 @@ func _ready() -> void:
 		_box(moving_body, Vector3(-width*0.5 + width*float(index)/8.0,0.85,0), Vector3(0.075,1.7,0.14), steel)
 	for height: float in [0.12, 1.65]:
 		_box(moving_body, Vector3(0,height,0), Vector3(width,0.14,0.16), steel)
+	# The open gate must remain supported when the surrounding wall is cut away.
+	var frame := Node3D.new()
+	frame.name = "IndependentGateFrame"
+	add_child(frame)
 	for side: int in [-1,1]:
-		_box(self, Vector3(float(side)*(width*0.5+0.2),1.1,0), Vector3(0.25,2.2,0.32), dark)
+		_box(frame, Vector3(float(side)*(width*0.5+0.2),1.92,0), Vector3(0.25,3.84,0.32), dark)
+	_box(frame, Vector3(0,3.84,0), Vector3(width+0.65,0.18,0.36), dark)
 	gear = RECEIVER.new() as StaticBody3D
 	gear.set("mechanism", self)
 	gear.name = "ExposedDrive"
@@ -58,6 +63,9 @@ func _ready() -> void:
 	gear_mesh.material_override = _material(Color("b0b879"))
 	gear_mesh.rotation.x = PI*0.5
 	gear.add_child(gear_mesh)
+	# A visible bracket and spindle connect the wheel to the fixed post.
+	_box(frame, Vector3(width*0.5+0.4,0.7,0.12), Vector3(0.5,0.14,0.14), dark)
+	_box(frame, Vector3(width*0.5+0.57,0.7,0.04), Vector3(0.12,0.12,0.3), steel)
 	_update_lift(0.0)
 
 

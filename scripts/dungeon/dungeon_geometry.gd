@@ -1,5 +1,10 @@
 extends "res://scripts/keepers/keepers_facility_geometry.gd"
 
+const WALL_FADE_RENDERER := preload("res://scripts/isometric/room_wall_fade_renderer.gd")
+const WALL_ARCHITECTURE := preload("res://scripts/dungeon/dungeon_wall_architecture.gd")
+const HYBRID_PAIR := preload("res://scripts/dungeon/dungeon_hybrid_pair.gd")
+const LOCAL_VIEW_WINDOW := preload("res://scripts/isometric/local_view_window.gd")
+var wall_fade_renderer: RefCounted
 
 func build_world(rooms: Dictionary, connections: Array) -> void:
 	super.build_world(rooms, connections)
@@ -11,6 +16,25 @@ func build_world(rooms: Dictionary, connections: Array) -> void:
 				kept.append(section)
 		cutaway.structural_sections = kept
 		portal.free()
+	# The orbit trial keeps the original complete shell and continuous crown.
+	# Keep the previous hybrid available without rebuilding it in this mode.
+	if bool(get_parent().get_meta(&"camera_quarter_turns", false)):
+		cutaway.configure_building(rooms, connections)
+		_configure_view_window(rooms, connections)
+		return
+	# Reconfigure after removing the legacy portal; the older facility keeps
+	# its full shell while this explicitly selected dungeon experiment fades.
+	HYBRID_PAIR.new().build(self, rooms)
+	cutaway.configure_building(rooms, connections)
+	WALL_ARCHITECTURE.new().build(self)
+	wall_fade_renderer = WALL_FADE_RENDERER.new()
+	wall_fade_renderer.configure(self, rooms, connections)
+	cutaway.set_enabled(true)
+
+
+func _configure_view_window(rooms: Dictionary, connections: Array) -> void:
+	cutaway.local_window = LOCAL_VIEW_WINDOW.new()
+	cutaway.local_window.configure(self, rooms, connections)
 
 
 func _facility_dressing() -> void:

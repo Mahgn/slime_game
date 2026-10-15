@@ -1,0 +1,11 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/dungeon/dungeon_route.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scripts/visibility_combat/combat_comparison.gd" id="2_comparison"]
+[ext_resource type="Script" path="res://scripts/visibility_combat/combat_player.gd" id="3_player"]
+
+[node name="VisibilityCombat" instance=ExtResource("1_base")]
+script = ExtResource("2_comparison")
+
+[node name="SlimePlayer" parent="." index="2"]
+script = ExtResource("3_player")

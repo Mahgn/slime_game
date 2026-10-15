@@ -1,7 +1,6 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/enemies/spitter.gd" id="1_spitter"]
-[ext_resource type="Script" path="res://scripts/combat/slime_sticky_mark.gd" id="2_sticky_mark"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/spitter_model.tscn" id="3_model"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
@@ -71,7 +70,3 @@ surface_material_override/0 = SubResource("StandardMaterial3D_warning")
 visible = false
 mesh = SubResource("SphereMesh_charge")
 surface_material_override/0 = SubResource("StandardMaterial3D_charge")
-
-[node name="StickyMarker" type="MeshInstance3D" parent="VisualRoot"]
-visible = false
-script = ExtResource("2_sticky_mark")

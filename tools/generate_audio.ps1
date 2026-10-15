@@ -19,6 +19,19 @@ $effects = @(
     @{ Name = 'player_spit'; Duration = 0.27; Peak = 0.43; Seed = 230925 }
     @{ Name = 'enemy_charge'; Duration = 0.64; Peak = 0.42; Seed = 230926 }
     @{ Name = 'enemy_spit'; Duration = 0.30; Peak = 0.46; Seed = 230927 }
+    @{ Name = 'impact_whip'; Duration = 0.16; Peak = 0.58; Seed = 2610141 }
+    @{ Name = 'impact_acid'; Duration = 0.48; Peak = 0.48; Seed = 2610142 }
+    @{ Name = 'impact_web'; Duration = 0.32; Peak = 0.48; Seed = 2610143 }
+    @{ Name = 'impact_spikes'; Duration = 0.30; Peak = 0.58; Seed = 2610144 }
+    @{ Name = 'acid_gather'; Duration = 0.18; Peak = 0.30; Seed = 2610151 }
+    @{ Name = 'acid_release'; Duration = 0.20; Peak = 0.42; Seed = 2610152 }
+    @{ Name = 'web_gather'; Duration = 0.18; Peak = 0.28; Seed = 2610153 }
+    @{ Name = 'web_release'; Duration = 0.19; Peak = 0.40; Seed = 2610154 }
+    @{ Name = 'spikes_gather'; Duration = 0.35; Peak = 0.30; Seed = 2610155 }
+    @{ Name = 'spikes_release'; Duration = 0.26; Peak = 0.43; Seed = 2610156 }
+    @{ Name = 'shell_gather'; Duration = 0.10; Peak = 0.28; Seed = 2610157 }
+    @{ Name = 'shell_open'; Duration = 0.25; Peak = 0.38; Seed = 2610158 }
+    @{ Name = 'shell_block'; Duration = 0.22; Peak = 0.48; Seed = 2610159 }
 )
 
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
@@ -44,6 +57,58 @@ foreach ($effect in $effects) {
         $filteredNoise = 0.71 * $filteredNoise + 0.29 * $noise
 
         switch ($effect.Name) {
+            'acid_gather' {
+                $rise = [Math]::Sin($twoPi * (150.0 * $t + 1200.0 * $t * $t) + 0.55 * [Math]::Sin($twoPi * 28 * $t))
+                $value = ($rise * 0.72 + $filteredNoise * 0.28) * [Math]::Pow($t / $effect.Duration, 0.6)
+            }
+            'acid_release' {
+                $value = (0.55 * ($noise - $filteredNoise) + 0.45 * [Math]::Sin($twoPi * (420 * $t - 650 * $t * $t))) * [Math]::Exp(-19 * $t)
+            }
+            'web_gather' {
+                $value = (0.84 * [Math]::Sin($twoPi * (105 * $t + 650 * $t * $t)) + 0.16 * $filteredNoise) * [Math]::Pow($t / $effect.Duration, 0.7)
+            }
+            'web_release' {
+                $value = (0.78 * [Math]::Sin($twoPi * (280 * $t - 420 * $t * $t)) + 0.22 * $filteredNoise) * [Math]::Exp(-20 * $t)
+            }
+            'spikes_gather' {
+                $value = (0.65 * $filteredNoise + 0.35 * [Math]::Sin($twoPi * (85 * $t + 110 * $t * $t))) * [Math]::Pow($t / $effect.Duration, 0.9)
+            }
+            'spikes_release' {
+                $value = (0.54 * [Math]::Sin($twoPi * (110 * $t - 95 * $t * $t)) + 0.46 * $filteredNoise) * [Math]::Exp(-15 * $t)
+            }
+            'shell_gather' {
+                $value = [Math]::Sin($twoPi * (300 * $t + 1600 * $t * $t)) * ($t / $effect.Duration)
+            }
+            'shell_open' {
+                $value = (0.56 * [Math]::Sin($twoPi * 440 * $t) + 0.28 * [Math]::Sin($twoPi * 660 * $t) + 0.16 * $filteredNoise) * [Math]::Exp(-13 * $t)
+            }
+            'shell_block' {
+                $value = (0.55 * [Math]::Sin($twoPi * 330 * $t) + 0.25 * [Math]::Sin($twoPi * 780 * $t) + 0.20 * $filteredNoise) * [Math]::Exp(-19 * $t)
+            }
+            'impact_whip' {
+                # Fast broadband crack with a short, low body; not the swing.
+                $crack = $noise * [Math]::Exp(-80.0 * $t)
+                $body = [Math]::Sin($twoPi * (175.0 * $t - 340.0 * $t * $t)) * [Math]::Exp(-28.0 * $t)
+                $value = 0.68 * $crack + 0.32 * $body
+            }
+            'impact_acid' {
+                # Wet onset followed by airy fizz and falling bubble tones.
+                $hiss = ($noise - $filteredNoise) * [Math]::Exp(-6.5 * $t) * (0.65 + 0.35 * [Math]::Sin($twoPi * 31.0 * $t))
+                $bubble = [Math]::Sin($twoPi * (410.0 * $t - 250.0 * $t * $t) + 0.8 * [Math]::Sin($twoPi * 23.0 * $t)) * [Math]::Exp(-17.0 * $t)
+                $value = 0.60 * $hiss + 0.40 * $bubble
+            }
+            'impact_web' {
+                # Soft adhesive plop, with a low elastic tail and little noise.
+                $plop = [Math]::Sin($twoPi * (255.0 * $t - 280.0 * $t * $t) + 0.5 * [Math]::Sin($twoPi * 14.0 * $t))
+                $stretch = [Math]::Sin($twoPi * (115.0 * $t + 45.0 * $t * $t))
+                $value = (0.65 * $plop + 0.24 * $stretch + 0.11 * $filteredNoise) * [Math]::Exp(-12.0 * $t)
+            }
+            'impact_spikes' {
+                # Heavy earth impact with two brief granular crack layers.
+                $thud = [Math]::Sin($twoPi * (94.0 * $t - 70.0 * $t * $t)) * [Math]::Exp(-16.0 * $t)
+                $grit = $filteredNoise * ([Math]::Exp(-23.0 * $t) + 0.28 * [Math]::Exp(-[Math]::Pow(($t - 0.045) * 70.0, 2)))
+                $value = 0.57 * $thud + 0.43 * $grit
+            }
             'hit' {
                 $body = [Math]::Sin($twoPi * (125.0 * $t - 135.0 * $t * $t))
                 $splash = [Math]::Sin($twoPi * (330.0 * $t - 480.0 * $t * $t))

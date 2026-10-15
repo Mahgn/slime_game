@@ -1,6 +1,9 @@
 extends SlimeKeepersWorldSpitter
 
+const HIT_VISUAL = preload("res://scripts/combat/actor_hit_visual.gd")
+
 var _creature_art: Node3D
+var _impact_pose: SlimeActorHitVisual
 var _legs: Array[Node3D] = []
 var _crawl_time: float = 0.0
 
@@ -9,9 +12,12 @@ func _ready() -> void:
 	super._ready()
 	model.hide()
 	muzzle.position = Vector3(0.0, 0.7, -0.55)
+	_impact_pose = HIT_VISUAL.new() as SlimeActorHitVisual
+	_impact_pose.name = "CreatureImpactPose"
+	get_node("VisualRoot").add_child(_impact_pose)
 	_creature_art = Node3D.new()
 	_creature_art.name = "DungeonCreature"
-	get_node("VisualRoot").add_child(_creature_art)
+	_impact_pose.add_child(_creature_art)
 	var acid: bool = drop_ability_id == &"acid_spit"
 	var shell: StandardMaterial3D = _material(Color("7c9149") if acid else Color("756479"))
 	var legs: StandardMaterial3D = _material(Color("323c39"))
@@ -27,6 +33,18 @@ func _ready() -> void:
 			_ellipsoid(leg, Vector3(float(side) * 0.31, -0.12, 0), Vector3(0.36, 0.06, 0.07), legs)
 			_ellipsoid(leg, Vector3(float(side) * 0.55, -0.31, 0.04), Vector3(0.075, 0.2, 0.08), legs)
 			_legs.append(leg)
+	_impact_pose.bind_visual(_creature_art)
+	attack_impact_received.connect(_on_attack_impact_received)
+
+
+func _on_attack_impact_received(_at: Vector3, _lethal: bool, profile: SlimeImpactProfile, direction: Vector3) -> void:
+	_impact_pose.play_hit(direction, profile)
+
+
+func get_impact_position() -> Vector3:
+	if is_instance_valid(_creature_art):
+		return _creature_art.to_global(Vector3(0.0, 0.60, 0.0))
+	return super.get_impact_position()
 
 
 func _process(delta: float) -> void:
@@ -40,10 +58,9 @@ func _process(delta: float) -> void:
 
 
 func _die() -> void:
-	if is_instance_valid(_creature_art):
-		_creature_art.reparent(get_parent(), true)
-		_creature_art.position.y = global_position.y + 0.02
-		_creature_art.scale.y = 0.34
+	if is_instance_valid(_impact_pose):
+		_impact_pose.reparent(get_parent(), true)
+		_impact_pose.become_remains(global_position)
 	super._die()
 
 

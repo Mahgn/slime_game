@@ -25,16 +25,30 @@ func _run() -> void:
 		_check(level.ambience.listener.is_current(),"Reloaded level owns the current hero listener")
 		for source: Dictionary in level.ambience.sources:
 			_check(source.player.playing and source.player.bus==&"Ambience","Local room loop starts on Ambience")
+			_check(is_equal_approx(source.player.pitch_scale,1.0),"Ambient loops retain original pitch")
 			weak_streams.append(weakref(source.player.stream))
 		for hazard in level.hazards:
 			hazard._play_cue(true)
 			_check(hazard.audio_player.playing and hazard.audio_player.stream==hazard.warning_sound,"Separate warning cue starts")
+			_check(is_equal_approx(hazard.audio_player.pitch_scale,1.0),"Warning cue starts at original pitch")
 			weak_streams.append(weakref(hazard.warning_sound))
 			hazard.introduced = true
 			hazard.clock = hazard.SAFE+hazard.WARNING
 			hazard._physics_process(0.016)
 			_check(hazard.audio_player.playing and hazard.audio_player.bus==&"Effects","Native hazard cue starts on Effects")
 			weak_streams.append(weakref(hazard.audio_player.stream))
+			var low: float = INF
+			var high: float = -INF
+			for repeat in 32:
+				hazard._play_cue(false)
+				low = minf(low,hazard.audio_player.pitch_scale)
+				high = maxf(high,hazard.audio_player.pitch_scale)
+			if hazard.spec.kind == "steam":
+				_check(is_equal_approx(low,1.0) and is_equal_approx(high,1.0),"Steam cue is not opted into random pitch")
+			else:
+				_check(low>=0.98 and high<=1.02 and high-low>0.01,"Mechanical trap impact varies within plus/minus 2 percent without drift")
+			hazard._play_cue(true)
+			_check(hazard.audio_player.stream==hazard.warning_sound and is_equal_approx(hazard.audio_player.pitch_scale,1.0),"Reused trap voice resets warning pitch after varied impacts")
 		current_scene = null
 		level.queue_free()
 		await _ticks(30)

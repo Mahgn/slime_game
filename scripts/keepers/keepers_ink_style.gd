@@ -81,7 +81,7 @@ func _bind(mesh: MeshInstance3D, surface: int, source: Material) -> void:
 		var styled: Material
 		if source is ShaderMaterial:
 			var shader: Shader = source.shader
-			if shader == null or not shader.resource_path.begins_with("res://shaders/keepers/"):
+			if shader == null or (not shader.resource_path.begins_with("res://shaders/keepers/") and not shader.has_meta(&"room_wall_fade_capable") and not shader.has_meta(&"local_view_window_capable")):
 				return
 			if "ALPHA" in shader.code or "unshaded" in shader.code or "void light(" in shader.code:
 				return
@@ -194,6 +194,10 @@ func set_mode(value: int) -> void:
 		else:
 			light.light_color = entry.color
 			light.light_energy = entry.energy
+	# F6 replaces materials, including their copied uniform values. Restore
+	# the current room reveal immediately, without resetting its transition.
+	if is_instance_valid(route.geometry.cutaway) and route.geometry.cutaway.has_method("refresh_render"):
+		route.geometry.cutaway.refresh_render()
 
 func _exit_tree() -> void:
 	if is_instance_valid(outline):

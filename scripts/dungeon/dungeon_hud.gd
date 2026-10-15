@@ -7,6 +7,15 @@ var _map_copy: Label
 
 func _build_hud() -> void:
 	super._build_hud()
+	var camera_hint := _label(_chrome, "Поворот: зажми колёсико и потяни ← / →\nКолесо — масштаб", 14, MUTED)
+	camera_hint.name = "CameraGestureHint"
+	camera_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	camera_hint.offset_left = -430
+	camera_hint.offset_right = -24
+	camera_hint.offset_top = 138
+	camera_hint.offset_bottom = 180
+	camera_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	camera_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map = _overlay("DungeonMap")
 	var box: VBoxContainer = _modal_box(_map, 660, 440)
 	var title: Label = _label(box, "Путь к своим", 32, GOLD)

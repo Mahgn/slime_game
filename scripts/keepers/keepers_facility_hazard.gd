@@ -7,6 +7,7 @@ const WARNING := 1.4
 const ACTIVE := 0.65
 const PERIOD := SAFE+WARNING+ACTIVE
 const ART_KIT = preload("res://scripts/keepers/keepers_facility_props.gd")
+const SOUND_PLAYBACK = preload("res://scripts/audio/sound_playback.gd")
 var route: SlimeKeepersWorld
 var spec: Dictionary
 var disabled := false
@@ -215,7 +216,9 @@ func _play_cue(warning: bool = false) -> void:
 	# Match the settings/ambience policy: the headless fixture has no playback
 	# device. Actual audio is exercised with the native renderer/driver.
 	if DisplayServer.get_name() != "headless":
-		audio_player.play()
+		# Only the mechanical impact varies. Warnings and steam keep their cue.
+		var pitch_variation := 0.02 if not warning and spec.kind != "steam" else 0.0
+		SOUND_PLAYBACK.play_existing(audio_player, pitch_variation)
 
 func _exit_tree() -> void:
 	if is_instance_valid(audio_player):

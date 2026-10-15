@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SlimeImpactProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/impact_profile.gd" id="1"]
+[ext_resource type="AudioStream" path="res://assets/audio/impact_whip.wav" id="2"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"whip"
+particle_style = 0
+primary_color = Color(1, 0.82, 0.48, 0.98)
+accent_color = Color(1, 0.98, 0.88, 0.98)
+burst_seconds = 0.22
+particle_speed = 3.5
+particle_size = Vector3(0.035, 0.035, 0.19)
+camera_strength = 0.65
+kill_camera_strength = 0.90
+hitstop_seconds = 0.045
+kill_hitstop_seconds = 0.060
+impact_sound = ExtResource("2")
+pitch_variation = 0.035
+volume_db = -1.0

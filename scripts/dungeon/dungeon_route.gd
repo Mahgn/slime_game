@@ -18,11 +18,16 @@ var ink_style: SlimeKeepersInkStyle
 var known_regions: Array = []
 
 
+func _enter_tree() -> void:
+	# The authored player is a scene child: its _ready runs before this root's.
+	set_meta(&"camera_quarter_turns", true)
+
+
 func _ready() -> void:
 	attempt_index = int(get_tree().get_meta(&"dungeon_attempt_index",0))
 	known_regions = get_tree().get_meta(&"dungeon_known_regions",[]).duplicate()
 	layout_script = DUNGEON_LAYOUT
-	geometry_script = DUNGEON_GEOMETRY
+	geometry_script = _geometry_for_route()
 	combat_script = DUNGEON_COMBAT
 	hud_script = DUNGEON_HUD
 	await super._ready()
@@ -54,6 +59,10 @@ func _ready() -> void:
 	_transitioning = false
 	print("DUNGEON_READY attempt=%d rooms=%d regions=5" % [attempt_index+1,rooms.size()])
 	hud.show_notice("Испытание началось. Найди дорогу к своим.\nПосле смерти слуги восстановят препятствия." if attempt_index==0 else "Попытка %d. Слуги восстановили подземелье.\nПриводы переставлены, приёмы собираются заново." % [attempt_index+1])
+
+
+func _geometry_for_route() -> Script:
+	return DUNGEON_GEOMETRY
 
 
 func _add_gate(at: Vector3, offset: float) -> Node3D:

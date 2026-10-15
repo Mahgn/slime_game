@@ -57,8 +57,7 @@ func _enter_room(index: int) -> void:
 	if is_instance_valid(geometry):
 		remove_child(geometry)
 		geometry.queue_free()
-	for child in combat.get_children():
-		child.queue_free()
+	combat.clear_transients()
 	room_index = index
 	geometry = GEOMETRY.new()
 	geometry.name = "RoomGeometry"

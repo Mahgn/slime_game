@@ -4,6 +4,8 @@ class_name Spitter
 signal projectile_requested(source: Spitter, origin: Vector3, direction: Vector3, damage: int, speed: float, max_range: float, cast_key: String)
 signal died(source: Spitter, ability_id: StringName, death_position: Vector3)
 signal phase_changed(source: Spitter, phase: StringName)
+signal impact_received(at: Vector3, lethal: bool)
+signal attack_impact_received(at: Vector3, lethal: bool, profile: SlimeImpactProfile, direction: Vector3)
 
 const PROFILE = preload("res://data/abilities/sticky_spit.tres")
 const BASE_SPEED := 2.5
@@ -14,6 +16,7 @@ const RETREAT_DISTANCE := 4.0
 const AIM_LOCK_SECONDS := 0.20
 const MAX_SHOT_RANGE := 18.0
 @export var drop_ability_id: StringName = &"sticky_spit"
+@export var attack_impact_profile: SlimeImpactProfile
 
 enum Phase { IDLE, WINDUP, RECOVERY, DEAD }
 
@@ -24,7 +27,6 @@ enum Phase { IDLE, WINDUP, RECOVERY, DEAD }
 @onready var charge_ring: MeshInstance3D = $VisualRoot/Muzzle/ChargeRing
 @onready var fire_flash: MeshInstance3D = $VisualRoot/Muzzle/FireFlash
 @onready var ground_warning: MeshInstance3D = $GroundWarning
-@onready var sticky_marker: SlimeStickyMark = $VisualRoot/StickyMarker
 
 var player_target: Node3D
 var attack_permission: Callable
@@ -47,7 +49,6 @@ func _ready() -> void:
 	charge_ring.visible = false
 	fire_flash.visible = false
 	ground_warning.visible = false
-	sticky_marker.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -102,20 +103,35 @@ func _process(delta: float) -> void:
 	elif _phase == Phase.RECOVERY:
 		progress = clampf(1.0 - _phase_left / PROFILE.enemy_recovery, 0.0, 1.0)
 	model.animate(delta, global_basis.inverse() * velocity, get_attack_phase(), progress)
-	sticky_marker.visible = _sticky_left > 0.0
 
 
 func receive_hit(amount: int, cast_key: String, source_team: StringName) -> bool:
+	return receive_attack_hit(amount, cast_key, source_team, Vector3.ZERO, SlimeImpactProfiles.GENERIC)
+
+
+func receive_attack_hit(amount: int, cast_key: String, source_team: StringName, incoming_direction: Vector3, impact_profile: SlimeImpactProfile = null) -> bool:
 	if _phase == Phase.DEAD or source_team != &"player" or amount <= 0 or cast_key.is_empty():
 		return false
 	if _hit_casts.has(cast_key):
 		return false
 	_hit_casts[cast_key] = true
+	var health_before := health
 	health = maxi(0, health - amount)
 	model.play_hurt()
+	if health < health_before:
+		impact_received.emit(get_impact_position(), health == 0)
+		attack_impact_received.emit(get_impact_position(), health == 0, impact_profile if impact_profile != null else SlimeImpactProfiles.GENERIC, incoming_direction)
 	if health == 0:
 		_die()
 	return true
+
+
+func get_impact_position() -> Vector3:
+	return global_position + Vector3.UP * 0.65
+
+
+func get_attack_impact_profile() -> SlimeImpactProfile:
+	return attack_impact_profile if attack_impact_profile != null else SlimeImpactProfiles.for_ability(drop_ability_id)
 
 
 func apply_sticky(factor: float, seconds: float) -> void:
@@ -123,16 +139,6 @@ func apply_sticky(factor: float, seconds: float) -> void:
 		return
 	_sticky_factor = clampf(factor, 0.1, 1.0)
 	_sticky_left = seconds
-	if sticky_marker.mesh == null:
-		set_sticky_impact(body_visual.to_global(Vector3(0.24, 0.07, -0.45)), -body_visual.global_basis.z)
-	sticky_marker.visible = true
-
-
-func set_sticky_impact(hit_position: Vector3, hit_normal: Vector3) -> void:
-	if _phase == Phase.DEAD:
-		return
-	sticky_marker.place_on_hit(hit_position, hit_normal, self, true)
-	sticky_marker.visible = _sticky_left > 0.0
 
 
 func current_move_speed() -> float:
@@ -146,7 +152,6 @@ func get_sticky_time_left() -> float:
 func clear_sticky() -> void:
 	_sticky_left = 0.0
 	_sticky_factor = 1.0
-	sticky_marker.visible = false
 
 
 func get_attack_phase() -> StringName:
@@ -169,7 +174,6 @@ func _tick_status(delta: float) -> void:
 		_sticky_left = maxf(0.0, _sticky_left - delta)
 		if _sticky_left == 0.0:
 			_sticky_factor = 1.0
-			sticky_marker.visible = false
 
 
 func _has_live_target() -> bool:
@@ -256,7 +260,6 @@ func _die() -> void:
 	charge_ring.visible = false
 	ground_warning.visible = false
 	fire_flash.visible = false
-	sticky_marker.visible = false
 	collision_layer = 0
 	collision_mask = 0
 	velocity = Vector3.ZERO

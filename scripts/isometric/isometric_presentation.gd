@@ -4,6 +4,10 @@ class_name SlimeIsometricPresentation
 const OFFSET := Vector3(12.0, 13.9, 12.0)
 const SILHOUETTE_SHADER := preload("res://shaders/isometric/occluded_silhouette.gdshader")
 const POSE_PARAMETERS := ["gel_time", "gel_energy", "gel_motion", "crawl_phase", "crawl_amount"]
+const COMBAT_IMPACT_SECONDS := 0.16
+const COMBAT_IMPACT_DISTANCE := 0.055
+const QUARTER_TURN_SECONDS := 0.30
+const FREE_ROTATION_RADIANS_PER_PIXEL := 0.006
 
 @onready var player: SlimeController = get_parent()
 @onready var camera: Camera3D = $Camera3D
@@ -21,12 +25,27 @@ var room_cutaway: SlimeRoomCutaway
 var silhouette: MeshInstance3D
 var _hero_visual: MeshInstance3D
 var _silhouette_material: ShaderMaterial
+var _combat_impact_remaining := 0.0
+var _combat_impact_direction := Vector3.ZERO
+var _combat_impact_strength := 0.0
+var _combat_camera_offset := Vector3.ZERO
+var _last_player_position := Vector3.ZERO
+var quarter_turns_enabled := false
+var free_rotation_enabled := false
+var camera_yaw := 0.0
+var _turn_from := 0.0
+var _turn_to := 0.0
+var _turn_elapsed := QUARTER_TURN_SECONDS
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
+	quarter_turns_enabled = bool(player.get_parent().get_meta(&"camera_quarter_turns", false))
+	free_rotation_enabled = quarter_turns_enabled and bool(player.get_parent().get_meta(&"camera_free_rotation", false))
 	center = player.global_position + Vector3.UP * 0.45
 	floor_height = player.global_position.y
+	_last_player_position = player.global_position
+	SlimeGameSettings.current().changed.connect(_on_camera_settings_changed)
 	_update_camera(0.0)
 	call_deferred("_collect_occluders")
 	call_deferred("_build_silhouette")
@@ -62,18 +81,122 @@ func _process(delta: float) -> void:
 
 
 func _update_camera(delta: float) -> void:
+	_advance_camera_turn(delta)
 	var wanted := player.global_position + Vector3.UP * 0.45
 	if player.get_parent().has_meta(&"isometric_camera_center"):
 		wanted = player.get_parent().get_meta(&"isometric_camera_center")
 	# Teleports and checkpoint restores snap immediately; ordinary movement
 	# follows with exponential smoothing, including changes in floor height.
-	if delta == 0.0 or center.distance_to(wanted) > 8.0:
+	if delta == 0.0 or center.distance_to(wanted) > 8.0 or _last_player_position.distance_to(player.global_position) > 4.0:
 		center = wanted
+		_reset_combat_impact()
 	else:
 		center = center.lerp(wanted, 1.0 - exp(-delta * 9.0))
-	camera.global_position = center + OFFSET
+	_last_player_position = player.global_position
+	_update_combat_impact(delta)
+	camera.global_position = center + _view_offset()
 	camera.look_at(center)
+	# Translate the finished camera without changing its orthographic basis.
+	camera.global_position += _combat_camera_offset
 	camera.size = lerpf(camera.size, zoom_target, 1.0 - exp(-delta * 12.0))
+
+
+func is_camera_turning() -> bool:
+	return _turn_elapsed < QUARTER_TURN_SECONDS
+
+
+func request_quarter_turn(direction: int) -> bool:
+	if not quarter_turns_enabled or free_rotation_enabled or get_tree().paused or not player.is_alive() or is_camera_turning() or direction == 0:
+		return false
+	_turn_from = camera_yaw
+	_turn_to = camera_yaw + signi(direction) * PI * 0.5
+	_turn_elapsed = 0.0
+	return true
+
+
+func set_free_rotation(value: bool) -> void:
+	free_rotation_enabled = quarter_turns_enabled and value
+	# Switching modes preserves the exact view and cancels unfinished motion.
+	_turn_elapsed = QUARTER_TURN_SECONDS
+	_turn_from = camera_yaw
+	_turn_to = camera_yaw
+
+
+func rotate_free(pixels: float) -> void:
+	if not free_rotation_enabled or get_tree().paused or not player.is_alive():
+		return
+	camera_yaw = wrapf(camera_yaw - pixels * FREE_ROTATION_RADIANS_PER_PIXEL, -PI, PI)
+	_turn_from = camera_yaw
+	_turn_to = camera_yaw
+
+
+func _advance_camera_turn(delta: float) -> void:
+	if not is_camera_turning() or get_tree().paused:
+		return
+	_turn_elapsed = minf(_turn_elapsed + maxf(delta, 0.0), QUARTER_TURN_SECONDS)
+	var progress := _turn_elapsed / QUARTER_TURN_SECONDS
+	camera_yaw = lerpf(_turn_from, _turn_to, smoothstep(0.0, 1.0, progress))
+	if not is_camera_turning():
+		# A quarter step can start at an arbitrary angle chosen in free mode.
+		camera_yaw = wrapf(_turn_to, -PI, PI)
+
+
+func _view_offset() -> Vector3:
+	return OFFSET.rotated(Vector3.UP, camera_yaw)
+
+
+func movement_basis() -> Basis:
+	var right := camera.global_basis.x
+	var back := camera.global_basis.z
+	right.y = 0.0
+	back.y = 0.0
+	return Basis(right.normalized(), Vector3.UP, back.normalized())
+
+
+func play_combat_impact(direction: Vector3, strength: float = 1.0) -> void:
+	if get_tree().paused or SlimeGameSettings.current().camera_shake <= 0.0 or strength <= 0.0:
+		return
+	# Keep the kick in the image plane, independent of the hero's rotation.
+	var view_axis := _view_offset().normalized()
+	var screen_direction := direction - view_axis * direction.dot(view_axis)
+	if screen_direction.length_squared() < 0.0001:
+		screen_direction = camera.global_basis.x
+	_combat_impact_direction = screen_direction.normalized()
+	# Repeated contacts refresh one bounded pulse; they never accumulate drift.
+	_combat_impact_strength = clampf(strength, 0.0, 1.0)
+	_combat_impact_remaining = COMBAT_IMPACT_SECONDS
+
+
+func get_combat_camera_offset() -> Vector3:
+	# This is the currently rendered translation, also used by pointer aiming.
+	return _combat_camera_offset
+
+
+func _update_combat_impact(delta: float) -> void:
+	var amount := SlimeGameSettings.current().camera_shake
+	if amount <= 0.0 or _combat_impact_remaining <= 0.0:
+		_combat_camera_offset = Vector3.ZERO
+		return
+	_combat_impact_remaining = maxf(0.0, _combat_impact_remaining - delta)
+	var progress := 1.0 - _combat_impact_remaining / COMBAT_IMPACT_SECONDS
+	var wave := cos(progress * TAU * 1.5) * pow(1.0 - progress, 2.0)
+	var view_axis := _view_offset().normalized()
+	var screen_direction := _combat_impact_direction - view_axis * _combat_impact_direction.dot(view_axis)
+	_combat_camera_offset = screen_direction * COMBAT_IMPACT_DISTANCE * _combat_impact_strength * clampf(amount, 0.0, 1.0) * wave
+
+
+func _reset_combat_impact() -> void:
+	if is_instance_valid(camera):
+		camera.global_position -= _combat_camera_offset
+	_combat_camera_offset = Vector3.ZERO
+	_combat_impact_remaining = 0.0
+	_combat_impact_direction = Vector3.ZERO
+	_combat_impact_strength = 0.0
+
+
+func _on_camera_settings_changed() -> void:
+	if SlimeGameSettings.current().camera_shake <= 0.0:
+		_reset_combat_impact()
 
 
 func _build_silhouette() -> void:

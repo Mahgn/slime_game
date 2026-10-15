@@ -68,6 +68,7 @@ func _build_ui() -> void:
 	_add_slider(content, &"effects", "Эффекты", 0.0, 1.0, 0.05, SlimeGameSettings.current().effects_volume)
 	_add_slider(content, &"ambience", "Музыка / фон", 0.0, 1.0, 0.05, SlimeGameSettings.current().ambience_volume)
 	_add_section(content, "Управление и экран")
+	_add_slider(content, &"shake", "Тряска при попадании", 0.0, 1.0, 0.05, SlimeGameSettings.current().camera_shake)
 	_add_checkbox(content, &"fullscreen", "Полноэкранный режим", SlimeGameSettings.current().fullscreen)
 	_error_label = _add_label(content, "", 17, false)
 	_error_label.custom_minimum_size.y = 26

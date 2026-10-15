@@ -4,6 +4,7 @@ class_name AbilityDefinition
 @export var ability_id: StringName
 @export var display_name: String
 @export var description: String
+@export var impact_profile: SlimeImpactProfile
 @export var player_damage: int
 @export var player_cooldown: float
 @export var player_projectile_speed: float
